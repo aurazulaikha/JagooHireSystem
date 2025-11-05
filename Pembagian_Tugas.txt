@@ -1,0 +1,17 @@
+Pembagian Tugas Pembuatan Website Rekrutmen Talent JagooIT (JagooHire)
+
+AURA ZULAIKHA
+1. Melakukan analisis rekrutmen aplikasi
+2. Merancang SRS aplikasi (Membuat database, usecase, flowchart system, fitur yang dibutuhkan, dan mengidentifikasi pembagian tugas masing user)
+3. Membuat aplikasi bagian backend dan frontend khusus fitur Dashboard, Candidate (CRUD), Request (CRUD), dan proses Login/Logout user
+4. Testing aplikasi bagian fitur Dashboard (CRUD), Candidate (CRUD), Request (CRUD), dan Login/Logout user
+
+EKA MAULIDYA RAHMI
+1. Merancang desain UI/UX
+2. Membuat aplikasi bagian backend dan frontend khusus fitur Manage User (CRUD), Technical Tests , Professional Tests, dan Audit Logs
+3. Testing aplikasi bagian fitur Manage User (CRUD), Technical Tests , Professional Tests, dan Audit Logs
+
+VINA DELTA SARI
+1. Merancang desain UI/UX
+2. Membuat aplikasi bagian backend dan frontend khusus fitur Request Candidates (CRUD), Aptitude Tests , Profile, dan Audit Feedbacks
+3. Testing aplikasi bagian fitur Request Candidates (CRUD), Aptitude Tests , Profile, dan Audit Feedbacks.
