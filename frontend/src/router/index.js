@@ -7,6 +7,12 @@ import EditCandidate from '@/views/EditCandidate.vue';
 import Request from '@/views/Request.vue';
 import AddRequest from '@/views/AddRequest.vue';
 import EditRequest from '@/views/EditRequest.vue';
+import TechnicalTest from '@/views/TechnicalTest.vue';
+import ManageUsers from '@/views/ManageUsers.vue';
+import AddUser from '@/views/AddUser.vue';
+import EditUsers from '@/views/EditUsers.vue';
+import UserProfile from '@/views/UserProfile.vue';
+import EditProfilePage from '@/views/EditProfilePage.vue';
 
 
 const routes = [
@@ -57,6 +63,42 @@ const routes = [
     name: 'EditRequest',
     component: EditRequest,
     meta: { requiresAuth: true, role: 'AM'}
+  },
+  {
+    path: '/technical-tests',
+    name: 'TechnicalTest',
+    component: TechnicalTest,
+    meta: { requiresAuth: true, role: ['AM']}
+  },
+  {
+    path: '/users',
+    name: 'ManageUsers',
+    component: ManageUsers,
+    meta: { requiresAuth: true, role: ['HCM']}
+  },
+  {
+    path: '/add-user',
+    name: 'AddUser',
+    component: AddUser,
+    meta: { requiresAuth: true, role: 'HCM'}
+  },
+  {
+    path: '/edit-user/:id',
+    name: 'EditUsers',
+    component: EditUsers,
+    meta: { requiresAuth: true, role: 'HCM'}
+  },
+  {
+    path: '/profile',
+    name: 'UserProfile',
+    component: UserProfile,
+    meta: { requiresAuth: true, role: ['HCM','AM','Director']}
+  },
+    {
+    path: '/profile/edit',
+    name: 'EditProfilePage',
+    component: EditProfilePage,
+    meta: { requiresAuth: true, role: ['HCM', 'AM', 'Director'] }
   },
 
 ]
