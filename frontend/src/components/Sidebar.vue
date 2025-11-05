@@ -81,7 +81,7 @@
 
       <!-- Profile / Logout (Semua user) -->
       <li v-if="user">
-        <router-link to="/profil" active-class="active">
+        <router-link to="/profile" active-class="active">
           <i class="nc-icon nc-single-02"></i>
           <p>Profil</p>
         </router-link>

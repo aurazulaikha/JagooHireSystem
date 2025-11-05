@@ -687,6 +687,98 @@ def get_aptitude_tests(current_user, rc_id):
         } for r in rows
     ])
 
+# ==============================
+# Technical Tests - Combined View
+# ==============================
+@app.route('/technical_tests/overview', methods=['GET'])
+@token_required
+@role_required(['AM'])
+def get_technical_overview(current_user):
+    cur = mysql.connection.cursor()
+
+    # Kandidat yang BELUM melakukan technical test
+    cur.execute("""
+        SELECT 
+            a.id AS aptitude_test_id,
+            a.request_candidate_id,
+            a.test_date,
+            a.must_have_skill,
+            a.motivation,
+            a.aptitude_score,
+            a.continue_next,
+            a.notes,
+            a.created_at AS test_created_at,
+            rc.id AS rc_id,
+            rc.request_id,
+            rc.candidate_id,
+            c.name AS candidate_name,
+            c.email AS candidate_email,
+            c.no_telp,
+            c.domisili,
+            c.applied_role,
+            c.status AS candidate_status,
+            r.role AS requested_role,
+            r.company_name,
+            r.location,
+            r.work_method,
+            r.work_schedule,
+            r.level
+        FROM aptitude_tests a
+        JOIN request_candidates rc ON a.request_candidate_id = rc.id
+        JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+        WHERE a.continue_next = 'ya'
+          AND a.request_candidate_id NOT IN (SELECT request_candidate_id FROM technical_tests)
+        ORDER BY a.created_at DESC
+    """)
+    aptitude_columns = [desc[0] for desc in cur.description]
+    pending_technical = [dict(zip(aptitude_columns, row)) for row in cur.fetchall()]
+
+    # Kandidat yang SUDAH melakukan technical test
+    cur.execute("""
+        SELECT
+            t.id AS technical_test_id,
+            t.request_candidate_id,
+            t.test_date,
+            t.aptitude_score,
+            t.domain12_score,
+            t.stack_eval,
+            t.portfolio_eval,
+            t.continue_next,
+            t.notes,
+            t.created_at AS test_created_at,
+            rc.id AS rc_id,
+            rc.request_id,
+            rc.candidate_id,
+            c.name AS candidate_name,
+            c.email AS candidate_email,
+            c.no_telp,
+            c.domisili,
+            c.applied_role,
+            c.status AS candidate_status,
+            r.role AS requested_role,
+            r.company_name,
+            r.location,
+            r.work_method,
+            r.work_schedule,
+            r.level
+        FROM technical_tests t
+        JOIN request_candidates rc ON t.request_candidate_id = rc.id
+        JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+        ORDER BY t.created_at DESC
+    """)
+    technical_columns = [desc[0] for desc in cur.description]
+    done_technical = [dict(zip(technical_columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+
+    return jsonify({
+        'pending_technical': pending_technical,
+        'done_technical': done_technical
+    }), 200
+
+
 
 # ==============================
 # Technical Tests (AM)
