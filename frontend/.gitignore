@@ -22,10 +22,6 @@ pnpm-debug.log*
 *.sln
 *.sw?
 
-# Python venv
-backend/venv/
-.venv/
-
 # Python cache
 __pycache__/
 *.pyc
