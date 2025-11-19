@@ -23,7 +23,7 @@ pnpm-debug.log*
 *.sw?
 
 # Python venv
-/backend/venv/
+/backend/venv
 .venv/
 
 # Python cache
