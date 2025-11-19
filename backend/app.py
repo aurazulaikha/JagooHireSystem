@@ -623,6 +623,145 @@ def delete_request_candidate(current_user, id):
     log_action(current_user['user_id'], f'delete request_candidate id={id}', 'request_candidates')
     return jsonify({'message': 'Relasi request-candidate berhasil dihapus'}), 200
 
+# =========================================
+# Aptitude Tests - Combined View (HCM only)
+# =========================================
+@app.route('/aptitude_tests/overview', methods=['GET'])
+@token_required
+@role_required(['HCM'])
+def get_aptitude_overview(current_user):
+    cur = mysql.connection.cursor()
+
+    # Kandidat yang BELUM melakukan aptitude test
+    cur.execute("""
+        SELECT 
+        a.id AS aptitude_test_id,
+        a.request_candidate_id,
+        a.test_date,
+        a.aptitude_score,
+        a.motivation,
+        a.must_have_skill,
+        a.continue_next,
+        a.notes,
+        a.created_at AS test_created_at,
+
+        rc.id AS rc_id,
+        rc.request_id,
+        rc.candidate_id,
+
+        c.name AS candidate_name,
+        c.email AS candidate_email,
+        c.no_telp,
+        c.domisili,
+        c.applied_role,
+        c.status AS candidate_status,
+
+        r.role AS requested_role,
+        r.company_name,
+        r.location,
+        r.work_method,
+        r.work_schedule,
+        r.level
+
+        FROM request_candidates rc
+        JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+        LEFT JOIN aptitude_tests a 
+            ON a.request_candidate_id = rc.id
+        WHERE a.aptitude_score IS NULL   -- belum dinilai sama sekali
+        ORDER BY rc.id DESC
+    """)
+    pending_columns = [d[0] for d in cur.description]
+    pending_aptitude = [dict(zip(pending_columns, row)) for row in cur.fetchall()]
+
+    # Kandidat yang SUDAH melakukan aptitude test
+    cur.execute("""
+        SELECT 
+            a.id AS aptitude_test_id,
+            a.request_candidate_id,
+            a.test_date,
+            a.aptitude_score,
+            a.motivation,
+            a.must_have_skill,
+            a.continue_next,
+            a.notes,
+            a.created_at AS test_created_at,
+
+            rc.id AS rc_id,
+            rc.request_id,
+            rc.candidate_id,
+
+            c.name AS candidate_name,
+            c.email AS candidate_email,
+            c.no_telp,
+            c.domisili,
+            c.applied_role,
+            c.status AS candidate_status,
+
+            r.role AS requested_role,
+            r.company_name,
+            r.location,
+            r.work_method,
+            r.work_schedule,
+            r.level
+        FROM aptitude_tests a
+        JOIN request_candidates rc ON a.request_candidate_id = rc.id
+        JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+        WHERE 
+            a.test_date IS NOT NULL
+            AND a.aptitude_score IS NOT NULL
+            AND a.motivation IS NOT NULL
+            AND a.must_have_skill IS NOT NULL
+        ORDER BY a.created_at DESC
+    """)
+    done_columns = [d[0] for d in cur.description]
+    done_aptitude = [dict(zip(done_columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+
+    return jsonify({
+        'pending_aptitude': pending_aptitude,
+        'done_aptitude': done_aptitude
+    }), 200
+
+# ==============================
+# Update / Atur Jadwal Aptitude Test
+# ==============================
+@app.route('/aptitude_tests/schedule', methods=['PATCH'])
+@token_required
+@role_required(['HCM'])
+def set_aptitude_schedule(current_user):
+    data = request.json or {}
+    rc_id = data.get('request_candidate_id')
+    test_date = data.get('test_date')
+
+    if not rc_id or not test_date:
+        return jsonify({'message': 'request_candidate_id dan test_date wajib'}), 400
+
+    cur = mysql.connection.cursor()
+
+    cur.execute("SELECT id FROM aptitude_tests WHERE request_candidate_id=%s", (rc_id,))
+    existing = cur.fetchone()
+
+    if existing:
+        cur.execute("""
+            UPDATE aptitude_tests
+            SET test_date=%s
+            WHERE request_candidate_id=%s
+        """, (test_date, rc_id))
+    else:
+        cur.execute("""
+            INSERT INTO aptitude_tests (request_candidate_id, test_date, created_at)
+            VALUES (%s, %s, NOW())
+        """, (rc_id, test_date))
+
+    mysql.connection.commit()
+    cur.close()
+
+    log_action(current_user['user_id'], f'set schedule aptitude rc_id={rc_id}', 'aptitude_tests')
+    return jsonify({'message': 'Tanggal tes berhasil diatur'}), 200
+
 # ==============================
 # Aptitude Tests (HCM)
 # ==============================
@@ -633,34 +772,45 @@ def add_aptitude_test(current_user):
     data = request.json or {}
     rc_id = data.get('request_candidate_id')
     test_date = data.get('test_date')
-    must_have_skill = data.get('must_have_skill')
-    motivation = data.get('motivation')  # enum('green_flag','red_flag')
     aptitude_score = data.get('aptitude_score')
-    continue_next = data.get('continue_next')  # enum('ya','tidak')
+    motivation = data.get('motivation')
+    must_have_skill = data.get('must_have_skill')
+    continue_next = data.get('continue_next')
     notes = data.get('notes')
 
     cur = mysql.connection.cursor()
-    cur.execute("""
-        INSERT INTO aptitude_tests (
-            request_candidate_id, test_date, must_have_skill, motivation,
-            aptitude_score, continue_next, notes, created_at
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
-    """, (rc_id, test_date, must_have_skill, motivation, aptitude_score, continue_next, notes))
-    mysql.connection.commit()
 
-    if continue_next == 'ya':
-        # Update status kandidat setelah aptitude test
+    # cek existing
+    cur.execute("SELECT id FROM aptitude_tests WHERE request_candidate_id=%s", (rc_id,))
+    existing = cur.fetchone()
+
+    if existing:
         cur.execute("""
-            UPDATE candidates c
-            JOIN request_candidates rc ON c.id = rc.candidate_id
-            SET c.status = 'ASAP'
-            WHERE rc.id=%s
-        """, (rc_id,))
-        mysql.connection.commit()
+            UPDATE aptitude_tests
+            SET test_date=%s,
+                aptitude_score=%s,
+                motivation=%s,
+                must_have_skill=%s,
+                continue_next=%s,
+                notes=%s,
+                created_at=NOW()
+            WHERE request_candidate_id=%s
+        """, (test_date, aptitude_score, motivation, must_have_skill, continue_next, notes, rc_id))
+    else:
+        cur.execute("""
+            INSERT INTO aptitude_tests (
+             request_candidate_id, test_date, aptitude_score, motivation,
+             must_have_skill, continue_next, notes, created_at
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,NOW())
+        """, (rc_id, test_date, aptitude_score, motivation, must_have_skill, continue_next, notes))
 
+    mysql.connection.commit()
     cur.close()
-    log_action(current_user['user_id'], f'create aptitude_test for rc_id={rc_id}', 'aptitude_tests')
+
+    log_action(current_user['user_id'], f'add aptitude rc_id={rc_id}', 'aptitude_tests')
     return jsonify({'message': 'Aptitude test saved successfully'}), 201
+
 
 @app.route('/aptitude_tests/<int:rc_id>', methods=['GET'])
 @token_required
@@ -687,6 +837,7 @@ def get_aptitude_tests(current_user, rc_id):
         } for r in rows
     ])
 
+
 # ==============================
 # Technical Tests - Combined View
 # ==============================
@@ -701,7 +852,7 @@ def get_technical_overview(current_user):
         SELECT 
             a.id AS aptitude_test_id,
             a.request_candidate_id,
-            a.test_date,
+            t.test_date,
             a.must_have_skill,
             a.motivation,
             a.aptitude_score,
@@ -727,8 +878,8 @@ def get_technical_overview(current_user):
         JOIN request_candidates rc ON a.request_candidate_id = rc.id
         JOIN candidates c ON rc.candidate_id = c.id
         JOIN requests r ON rc.request_id = r.id
-        WHERE a.continue_next = 'ya'
-          AND a.request_candidate_id NOT IN (SELECT request_candidate_id FROM technical_tests)
+        LEFT JOIN technical_tests t ON t.request_candidate_id = a.request_candidate_id
+        WHERE t.domain12_score IS NULL AND a.continue_next = 'ya'
         ORDER BY a.created_at DESC
     """)
     aptitude_columns = [desc[0] for desc in cur.description]
@@ -766,6 +917,11 @@ def get_technical_overview(current_user):
         JOIN request_candidates rc ON t.request_candidate_id = rc.id
         JOIN candidates c ON rc.candidate_id = c.id
         JOIN requests r ON rc.request_id = r.id
+        WHERE 
+            t.test_date IS NOT NULL
+            AND t.domain12_score IS NOT NULL
+            AND t.stack_eval IS NOT NULL
+            AND t.portfolio_eval IS NOT NULL
         ORDER BY t.created_at DESC
     """)
     technical_columns = [desc[0] for desc in cur.description]
@@ -778,6 +934,43 @@ def get_technical_overview(current_user):
         'done_technical': done_technical
     }), 200
 
+# ==============================
+# Update / Atur Jadwal Technical Test
+# ==============================
+@app.route('/technical_tests/schedule', methods=['PATCH'])
+@token_required
+@role_required(['AM'])
+def set_technical_schedule(current_user):
+    data = request.json or {}
+    rc_id = data.get('request_candidate_id')
+    test_date = data.get('test_date')
+
+    if not rc_id or not test_date:
+        return jsonify({'message': 'request_candidate_id dan test_date wajib diisi'}), 400
+
+    cur = mysql.connection.cursor()
+
+    # Jika kandidat belum punya record technical_test, buat minimal 1 record hanya dengan test_date
+    cur.execute("SELECT id FROM technical_tests WHERE request_candidate_id=%s", (rc_id,))
+    existing = cur.fetchone()
+
+    if existing:
+        cur.execute("""
+            UPDATE technical_tests 
+            SET test_date=%s 
+            WHERE request_candidate_id=%s
+        """, (test_date, rc_id))
+    else:
+        cur.execute("""
+            INSERT INTO technical_tests (request_candidate_id, test_date, created_at)
+            VALUES (%s, %s, NOW())
+        """, (rc_id, test_date))
+
+    mysql.connection.commit()
+    cur.close()
+
+    log_action(current_user['user_id'], f'set schedule for rc_id={rc_id}', 'technical_tests')
+    return jsonify({'message': 'Tanggal tes berhasil diatur'}), 200
 
 
 # ==============================
@@ -790,7 +983,6 @@ def add_technical_test(current_user):
     data = request.json or {}
     rc_id = data.get('request_candidate_id')
     test_date = data.get('test_date')
-    aptitude_score = data.get('aptitude_score')
     domain12_score = data.get('domain12_score')
     stack_eval = data.get('stack_eval')
     portfolio_eval = data.get('portfolio_eval')
@@ -798,12 +990,68 @@ def add_technical_test(current_user):
     notes = data.get('notes')
 
     cur = mysql.connection.cursor()
+
+    # Ambil aptitude_score dari aptitude_tests
     cur.execute("""
-        INSERT INTO technical_tests (
+        SELECT aptitude_score
+        FROM aptitude_tests
+        WHERE request_candidate_id = %s
+        ORDER BY id DESC
+        LIMIT 1
+    """, (rc_id,))
+    aptitude_row = cur.fetchone()
+
+    aptitude_score = aptitude_row[0] if aptitude_row else None
+
+    # Simpan ke technical_tests
+    # CEK APAKAH SUDAH ADA DATA TECHNICAL TEST
+    cur.execute("""
+        SELECT id FROM technical_tests
+        WHERE request_candidate_id = %s
+        LIMIT 1
+    """, (rc_id,))
+    existing = cur.fetchone()
+
+    if existing:
+        # UPDATE JIKA SUDAH ADA
+        cur.execute("""
+            UPDATE technical_tests
+            SET test_date=%s,
+            aptitude_score=%s,
+            domain12_score=%s,
+            stack_eval=%s,
+            portfolio_eval=%s,
+            continue_next=%s,
+            notes=%s,
+            created_at=NOW()
+            WHERE request_candidate_id=%s
+        """, (
+            test_date,
+            aptitude_score,
+            domain12_score,
+            stack_eval,
+            portfolio_eval,
+            continue_next,
+            notes,
+            rc_id
+        ))
+    else:
+    # INSERT BARU JIKA BELUM ADA
+        cur.execute("""
+            INSERT INTO technical_tests (
             request_candidate_id, test_date, aptitude_score, domain12_score,
             stack_eval, portfolio_eval, continue_next, notes, created_at
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-    """, (rc_id, test_date, aptitude_score, domain12_score, stack_eval, portfolio_eval, continue_next, notes))
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+        """, (
+            rc_id,
+            test_date,
+            aptitude_score,
+            domain12_score,
+            stack_eval,
+            portfolio_eval,
+            continue_next,
+            notes
+        ))
     mysql.connection.commit()
 
     if continue_next == 'ya':

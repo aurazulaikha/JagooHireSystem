@@ -7,7 +7,10 @@ import EditCandidate from '@/views/EditCandidate.vue';
 import Request from '@/views/Request.vue';
 import AddRequest from '@/views/AddRequest.vue';
 import EditRequest from '@/views/EditRequest.vue';
+import AptitudeTest from '@/views/AptitudeTest.vue';
+import TestAptitudeForm from '@/views/TestAptitudeForm.vue';
 import TechnicalTest from '@/views/TechnicalTest.vue';
+import TestTechnicalForm from '@/views/TestTechnicalForm.vue';
 import ManageUsers from '@/views/ManageUsers.vue';
 import AddUser from '@/views/AddUser.vue';
 import EditUsers from '@/views/EditUsers.vue';
@@ -65,9 +68,27 @@ const routes = [
     meta: { requiresAuth: true, role: 'AM'}
   },
   {
+    path: '/aptitude-tests',
+    name: 'AptitudeTest',
+    component: AptitudeTest,
+    meta: { requiresAuth: true, role: ['HCM']}
+  },
+  {
+    path: '/aptitude-test/penilaian',
+    name: 'TestAptitudeForm',
+    component: TestAptitudeForm,
+    meta: { requiresAuth: true, role: ['HCM']}
+  },
+  {
     path: '/technical-tests',
     name: 'TechnicalTest',
     component: TechnicalTest,
+    meta: { requiresAuth: true, role: ['AM']}
+  },
+  {
+    path: '/technical-test/penilaian',
+    name: 'TestTechnicalForm',
+    component: TestTechnicalForm,
     meta: { requiresAuth: true, role: ['AM']}
   },
   {

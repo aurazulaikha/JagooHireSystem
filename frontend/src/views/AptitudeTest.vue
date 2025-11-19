@@ -3,7 +3,7 @@
     <div class="dashboard-container">
       <!-- Header -->
       <div class="dashboard-header">
-        <h1 class="dashboard-title">Technical Test</h1>
+        <h1 class="dashboard-title">Aptitude Test</h1>
         <div class="title-underline"></div>
       </div>
 
@@ -12,13 +12,13 @@
         <input
           type="text"
           v-model="searchQuery"
-          placeholder="Cari technical test..."
+          placeholder="Cari aptitude test..."
           class="search-input"
         />
       </div>
 
-      <!-- ========== TABEL 1: BELUM MELAKUKAN TECHNICAL TEST ========== -->
-      <p class="dashboard-subtitle">Belum Melakukan Technical Test</p>
+      <!-- ========== TABEL 1: BELUM MELAKUKAN APTITUDE TEST ========== -->
+      <p class="dashboard-subtitle">Belum Melakukan Aptitude Test</p>
       <div class="table-scroll-wrapper">
         <table class="request-table">
           <thead>
@@ -36,10 +36,9 @@
               <th>Metode Kerja</th>
               <th>Jadwal Kerja</th>
               <th>Level Dibutuhkan</th>
-              <th>Aptitude Score</th>
               <th>Candidate Status</th>
               <th>Tanggal Tes</th>
-              <th v-if="userRole === 'AM'">Aksi</th>
+              <th v-if="userRole === 'HCM'">Aksi</th>
             </tr>
           </thead>
           <tbody>
@@ -68,10 +67,9 @@
               <td>{{ p.work_method }}</td>
               <td>{{ p.work_schedule }}</td>
               <td>{{ p.level }}</td>
-              <td>{{ p.aptitude_score }}</td>
               <td>{{ p.candidate_status }}</td>
               <td>{{ p.test_date ? formatDate(p.test_date) : "-" }}</td>
-              <td v-if="userRole === 'AM'" class="actions-cell">
+              <td v-if="userRole === 'HCM'" class="actions-cell">
                 <button class="btn-edit" @click="openScheduleModal(p)">
                   Atur Jadwal
                 </button>
@@ -82,7 +80,7 @@
             </tr>
             <tr v-if="filteredPending.length === 0">
               <td colspan="17" class="text-center">
-                Tidak ada kandidat yang menunggu technical test.
+                Tidak ada kandidat yang menunggu aptitude test.
               </td>
             </tr>
           </tbody>
@@ -91,8 +89,8 @@
 
       <br />
 
-      <!-- ========== TABEL 2: SUDAH MELAKUKAN TECHNICAL TEST ========== -->
-      <h2 class="dashboard-subtitle">Sudah Melakukan Technical Test</h2>
+      <!-- ========== TABEL 2: SUDAH MELAKUKAN APTITUDE TEST ========== -->
+      <h2 class="dashboard-subtitle">Sudah Melakukan Aptitude Test</h2>
       <div class="table-scroll-wrapper">
         <table class="request-table">
           <thead>
@@ -114,11 +112,10 @@
               <th>Aptitude Score</th>
               <th>Candidate Status</th>
               <th>Lanjut?</th>
-              <th>Domain 1 & 2 Score</th>
+              <th>Motivasi</th>
+              <th>Kemampuan Wajib</th>
               <th>Notes</th>
-              <th>Portfolio Eval</th>
-              <th>Stack Eval</th>
-              <th>Candidate Data Created At</th>
+              <th>Candidate Created At</th>
             </tr>
           </thead>
           <tbody>
@@ -158,15 +155,14 @@
                 </span>
               </td>
 
-              <td>{{ t.domain12_score }}</td>
+              <td>{{ t.motivation }}</td>
+              <td>{{ t.must_have_skill }}</td>
               <td>{{ t.notes }}</td>
-              <td>{{ t.portfolio_eval }}</td>
-              <td>{{ t.stack_eval }}</td>
               <td>{{ formatDate(t.test_created_at) }}</td>
             </tr>
             <tr v-if="filteredDone.length === 0">
               <td colspan="22" class="text-center">
-                Belum ada kandidat yang melakukan technical test.
+                Belum ada kandidat yang melakukan aptitude test.
               </td>
             </tr>
           </tbody>
@@ -197,7 +193,7 @@
   <!-- ATUR JADWAL -->
   <div v-if="showScheduleModal" class="modal-overlay-schedule">
     <div class="alert-box">
-      <h3>Atur Jadwal Technical Test</h3>
+      <h3>Atur Jadwal Aptitude Test</h3>
       <p><strong>Kandidat:</strong> {{ selectedCandidate.candidate_name }}</p>
 
       <input v-model="scheduleDate" type="date" />
@@ -214,7 +210,7 @@
 import axios from "axios";
 
 export default {
-  name: "TechnicalTest",
+  name: "AptitudeTest",
   data() {
     const user = JSON.parse(localStorage.getItem("user")) || {};
     return {
@@ -222,8 +218,8 @@ export default {
       searchQuery: "",
       token: user.token || "",
       userRole: user.role || "",
-      pendingTechnical: [],
-      doneTechnical: [],
+      pendingAptitude: [],
+      doneAptitude: [],
 
       perPage: 10,
       currentPage: 1,
@@ -236,27 +232,27 @@ export default {
     };
   },
   computed: {
-    filteredPending() {
-      const q = this.searchQuery.toLowerCase();
-      return this.pendingTechnical.filter(
-        (p) =>
-          (p.candidate_name || "").toLowerCase().includes(q) ||
-          String(p.request_candidate_id).includes(q) ||
-          (p.applied_role || "").toLowerCase().includes(q) ||
-          (p.requested_role || "").toLowerCase().includes(q)
-      );
-    },
+  filteredPending() {
+    const q = this.searchQuery.toLowerCase();
+    return this.pendingAptitude.filter(
+      (p) =>
+        (p.candidate_name || "").toLowerCase().includes(q) ||
+        String(p.request_candidate_id).includes(q) ||
+        (p.applied_role || "").toLowerCase().includes(q) ||
+        (p.requested_role || "").toLowerCase().includes(q)
+    );
+  },
 
-    filteredDone() {
-      const q = this.searchQuery.toLowerCase();
-      return this.doneTechnical.filter(
-        (t) =>
-          (t.candidate_name || "").toLowerCase().includes(q) ||
-          String(t.request_candidate_id).includes(q) ||
-          (t.applied_role || "").toLowerCase().includes(q) ||
-          (t.requested_role || "").toLowerCase().includes(q)
-      );
-    },
+  filteredDone() {
+    const q = this.searchQuery.toLowerCase();
+    return this.doneAptitude.filter(
+      (t) =>
+        (t.candidate_name || "").toLowerCase().includes(q) ||
+        String(t.request_candidate_id).includes(q) ||
+        (t.applied_role || "").toLowerCase().includes(q) ||
+        (t.requested_role || "").toLowerCase().includes(q)
+    );
+  },
     filteredTests() {
       const q = this.searchQuery.toLowerCase();
       return this.tests.filter(
@@ -281,23 +277,23 @@ export default {
     },
   },
   mounted() {
-    this.getTechnicalOverview();
+    this.getAptitudeOverview();
   },
 
   methods: {
-    async getTechnicalOverview() {
+    async getAptitudeOverview() {
       try {
         const res = await axios.get(
-          "http://localhost:5000/technical_tests/overview",
+          "http://localhost:5000/aptitude_tests/overview",
           {
             headers: { Authorization: `Bearer ${this.token}` },
           }
         );
-        this.pendingTechnical = res.data.pending_technical;
-        this.doneTechnical = res.data.done_technical;
+        this.pendingAptitude = res.data.pending_aptitude;
+        this.doneAptitude = res.data.done_aptitude;
       } catch (err) {
         console.error(err);
-        this.showCustomAlert("Gagal memuat data overview technical test.");
+        this.showCustomAlert("Gagal memuat data overview aptitude test.");
       }
     },
     openScheduleModal(candidate) {
@@ -321,15 +317,15 @@ export default {
 
       try {
         await axios.patch(
-          "http://localhost:5000/technical_tests/schedule",
+          "http://localhost:5000/aptitude_tests/schedule",
           {
-            request_candidate_id: this.selectedCandidate.request_candidate_id,
+            request_candidate_id: this.selectedCandidate.rc_id,
             test_date: this.scheduleDate,
           },
           { headers: { Authorization: `Bearer ${this.token}` } }
         );
         this.showCustomAlert("Jadwal tes berhasil disimpan!");
-        await this.getTechnicalOverview(); // refresh tabel
+        await this.getAptitudeOverview(); // refresh tabel
         this.closeScheduleModal();
       } catch (err) {
         console.error(err);
@@ -339,7 +335,7 @@ export default {
 
     async goToPenilaian(candidate) {
       const res = await axios.get(
-        `http://localhost:5000/technical_tests/${candidate.request_candidate_id}`,
+        `http://localhost:5000/aptitude_tests/${candidate.request_candidate_id}`,
         { headers: { Authorization: `Bearer ${this.token}` } }
       );
 
@@ -349,19 +345,19 @@ export default {
         "selectedCandidate",
         JSON.stringify({
           ...candidate,
-          test_date: existing.test_date || "", // ambil dari technical_tests
+          test_date: existing.test_date || "", // ambil dari aptitude_tests
         })
       );
 
-      this.$router.push("/technical-test/penilaian");
+      this.$router.push("/aptitude-test/penilaian");
     },
     async deleteTest(id) {
       try {
-        await axios.delete(`http://localhost:5000/technical_tests/${id}`, {
+        await axios.delete(`http://localhost:5000/aptitude_tests/${id}`, {
           headers: { Authorization: `Bearer ${this.token}` },
         });
-        this.showCustomAlert("Technical test berhasil dihapus!");
-        this.getTechnicalTests();
+        this.showCustomAlert("Aptitude test berhasil dihapus!");
+        this.getAptitudeTests();
       } catch (err) {
         console.error(err);
         this.showCustomAlert("Gagal menghapus data.");
