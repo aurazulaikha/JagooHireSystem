@@ -403,7 +403,7 @@ export default {
         no_telp: "HP/Telp",
         domisili: "Domisili",
         domain12_score: "Domain 1 & 2 Score",
-        test_created_at: "Created At"
+        test_created_at: "Candidate Created At"
       };
       return map[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
     },
