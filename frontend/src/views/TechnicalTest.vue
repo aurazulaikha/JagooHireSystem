@@ -123,7 +123,7 @@
               <th>Notes</th>
               <th>Portfolio Eval</th>
               <th>Stack Eval</th>
-              <th>Candidate Data Created At</th>
+              <th>Candidate Created At</th>
               <th v-if="userRole === 'AM'">Aksi</th>
             </tr>
           </thead>
