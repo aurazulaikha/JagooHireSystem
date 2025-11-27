@@ -1,45 +1,59 @@
 <template>
-  <div class="edit-user-wrapper">
-    <div class="edit-user-container">
-      <h1 class="page-title">Edit Pengguna</h1>
-      <div class="title-underline"></div>
-
-      <form @submit.prevent="updateUser">
-        <label>Username</label>
-        <input v-model="form.username" required />
-
-        <label>Email</label>
-        <input v-model="form.email" type="email" required />
-
-        <label>No. Telepon</label>
-        <input v-model="form.telp" placeholder="Masukkan nomor telepon" />
-
-        <label>Role</label>
-        <select v-model="form.role" required>
-          <option value="">Pilih Role</option>
-          <option value="HCM">HCM</option>
-          <option value="AM">AM</option>
-          <option value="Director">Director</option>
-        </select>
-
-        <label>Password (Opsional)</label>
-        <input
-          v-model="form.password"
-          type="password"
-          placeholder="Isi jika ingin mengganti password"
-        />
-
-        <div class="form-actions">
-          <button type="submit">Simpan Perubahan</button>
-          <button type="button" @click="goBack">Batal</button>
-        </div>
-      </form>
-
-      <!-- ALERT -->
-      <div v-if="showAlert" :class="['alert-box', alertType]">
-        <p>{{ alertMessage }}</p>
-        <button @click="closeAlert">OK</button>
+  <div class="dashboard-wrapper">
+    <div class="dashboard-container">
+      <div class="dashboard-header">
+        <h1 class="dashboard-title">Edit User</h1>
+        <div class="title-underline"></div>
       </div>
+
+      <div class="form-container">
+        <form @submit.prevent="updateUser">
+          <div class="form-group">
+            <label>Username</label>
+            <input v-model="form.username" required />
+          </div>
+
+          <div class="form-group">
+            <label>Email</label>
+            <input v-model="form.email" type="email" />
+          </div>
+
+          <div class="form-group">
+            <label>Nomor Telepon</label>
+            <input v-model="form.telp" type="text" />
+          </div>
+
+          <div class="form-group">
+            <label>Role</label>
+            <select v-model="form.role" required>
+              <option value="HCM">HCM</option>
+              <option value="AM">AM</option>
+              <option value="Director">Director</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Password (Opsional)</label>
+            <input
+              v-model="form.password"
+              type="password"
+              placeholder="Kosongkan jika tidak ingin mengubah"
+            />
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn-add">Simpan Perubahan</button>
+            <button type="button" class="btn-cancel" @click="goBack">Batal</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Pop-up Notification -->
+      <transition name="fade">
+        <div v-if="showPopup" :class="['popup', popupType]">
+          <p>{{ popupMessage }}</p>
+        </div>
+      </transition>
     </div>
   </div>
 </template>
@@ -60,11 +74,10 @@ export default {
         role: "",
         password: "",
       },
-      token: user.token || "",
-      showAlert: false,
-      alertMessage: "",
-      alertType: "",
-      alertCallback: null,
+      token: user.token,
+      showPopup: false,
+      popupMessage: "",
+      popupType: "",
     };
   },
   mounted() {
@@ -81,149 +94,167 @@ export default {
         if (user) {
           this.form = { ...user, password: "" };
         } else {
-          this.showCustomAlert("User tidak ditemukan.", "error");
+          this.showNotification("User tidak ditemukan.", "error");
         }
       } catch (err) {
-        console.error(err);
-        this.showCustomAlert("Gagal memuat data user.", "error");
+        this.showNotification("Gagal memuat data user.", "error");
       }
     },
     async updateUser() {
       try {
         await axios.put(
           `http://localhost:5000/users/${this.form.id}`,
-          { ...this.form },
+          this.form,
           { headers: { Authorization: `Bearer ${this.token}` } }
         );
-        this.showCustomAlert("User berhasil diperbarui!", "success", () => {
-          this.goBack();
-        });
+        this.showNotification("User berhasil diperbarui!", "success");
+        setTimeout(() => this.goBack(), 1800);
       } catch (err) {
-        console.error(err);
         const msg = err.response?.data?.message || "Gagal memperbarui user.";
-        this.showCustomAlert(msg, "error");
+        this.showNotification(msg, "error");
       }
+    },
+    showNotification(message, type) {
+      this.popupMessage = message;
+      this.popupType = type;
+      this.showPopup = true;
+      setTimeout(() => (this.showPopup = false), 2000);
     },
     goBack() {
       this.$router.push("/users");
-    },
-    showCustomAlert(message, type = "success", callback = null) {
-      this.alertMessage = message;
-      this.alertType = type;
-      this.showAlert = true;
-      this.alertCallback = callback;
-    },
-    closeAlert() {
-      this.showAlert = false;
-      if (this.alertCallback) this.alertCallback();
     },
   },
 };
 </script>
 
 <style scoped>
-.edit-user-wrapper {
+.dashboard-wrapper {
+  background: linear-gradient(180deg, #f9f3f3, #fff);
+  min-height: 100vh;
   display: flex;
   justify-content: flex-start;
-  padding: 100px 0 0 50px;
-  min-height: 100vh;
-  background: linear-gradient(180deg, #f9f3f3, #fff);
+  align-items: flex-start;
+  padding: 80px 60px;
+  box-sizing: border-box;
+  position: relative;
 }
-
-.edit-user-container {
-  width: 400px;
-  background: #fff;
-  padding: 25px;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+.dashboard-container {
+  width: 100%;
+  max-width: 800px;
+  color: #333;
+  font-family: "Poppins", sans-serif;
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  align-items: flex-start;
+  gap: 25px;
 }
-
-/* Header */
-.page-title {
-  font-size: 28px;
-  color: #7a3e3e;
+.dashboard-header {
+  text-align: left;
+  width: 100%;
+}
+.dashboard-title {
+  font-size: 32px;
   font-weight: 700;
+  color: #7a3e3e;
+  margin-bottom: 10px;
+  text-align: left;
 }
-
 .title-underline {
   width: 80px;
   height: 4px;
   background: #a26060;
   border-radius: 5px;
+  margin-bottom: 25px;
+}
+
+.form-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 25px;
+  width: 100%;
+  max-width: 600px;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
   margin-bottom: 15px;
 }
 
-/* Form */
-form label {
-  display: block;
-  margin-top: 10px;
-  font-weight: 500;
+label {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #7a3e3e;
 }
-
-form input,
-form select {
-  width: 100%;
-  padding: 8px;
-  border-radius: 6px;
+input,
+select {
+  padding: 10px 12px;
+  border-radius: 8px;
   border: 1px solid #ccc;
-  margin-top: 5px;
+  font-size: 14px;
+  font-family: inherit;
 }
 
-/* Form actions */
 .form-actions {
-  margin-top: 15px;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  margin-top: 15px;
 }
-
-.form-actions button {
-  padding: 6px 12px;
+.btn-add {
+  background: #a26060;
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 8px;
   border: none;
-  border-radius: 6px;
-  cursor: pointer;
   font-weight: 600;
+  cursor: pointer;
+  transition: 0.3s;
 }
-
-.form-actions button[type="submit"] {
-  background: #43a032;
-  color: white;
+.btn-add:hover {
+  background: #7a3e3e;
 }
-
-.form-actions button[type="button"] {
+.btn-cancel {
   background: #ccc;
   color: #333;
-}
-
-/* Alert */
-.alert-box {
-  margin-top: 15px;
-  padding: 15px;
+  padding: 10px 16px;
   border-radius: 8px;
-  text-align: center;
-  font-weight: 500;
-}
-
-.alert-box.success {
-  background: #d1e7dd;
-  color: #0f5132;
-}
-
-.alert-box.error {
-  background: #f8d7da;
-  color: #842029;
-}
-
-.alert-box button {
-  margin-top: 10px;
-  padding: 6px 12px;
   border: none;
-  border-radius: 6px;
+  font-weight: 600;
   cursor: pointer;
-  background: #333;
+  transition: 0.3s;
+}
+.btn-cancel:hover {
+  background: #999;
+}
+
+.popup {
+  position: fixed;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 16px 24px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 15px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
   color: #fff;
+  z-index: 1000;
+  opacity: 0.95;
+}
+.popup.success {
+  background-color: #4caf50;
+}
+.popup.error {
+  background-color: #f44336;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

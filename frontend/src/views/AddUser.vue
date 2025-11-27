@@ -7,19 +7,16 @@
       </div>
 
       <div class="form-container">
-        <form @submit.prevent="addUser">
+        <form @submit.prevent="submitForm">
           <div class="form-group">
             <label>Username</label>
             <input v-model="form.username" type="text" required />
           </div>
-          
+
           <div class="form-group">
-          <label>Password</label>
-        <input
-          v-model="form.password"
-          type="password" required
-        />
-        </div>
+            <label>Password</label>
+            <input v-model="form.password" type="password" required />
+          </div>
 
           <div class="form-group">
             <label>Role</label>
@@ -46,13 +43,13 @@
           </div>
         </form>
       </div>
+      
+      <transition name="fade">
+        <div v-if="showPopup" :class="['popup', popupType]">
+          <p>{{ popupMessage }}</p>
+        </div>
+      </transition>
     </div>
-
-    <transition name="fade">
-      <div v-if="showPopup" :class="['popup', popupType]">
-        <p>{{ popupMessage }}</p>
-      </div>
-    </transition>
   </div>
 </template>
 
@@ -65,32 +62,30 @@ export default {
     const user = JSON.parse(localStorage.getItem("user")) || {};
     return {
       form: {
-        name: "",
+        username: "",
+        password: "",
+        role: "",
         email: "",
         telp: "",
-        domisili: "",
-        applied_role: "",
-        status: "Unconfirmed",
       },
-      token: user.token || "",
+      token: user.token,
       showPopup: false,
       popupMessage: "",
       popupType: "",
     };
   },
   methods: {
-    async addUser() {
+    async submitForm() {
       try {
         await axios.post(
           "http://localhost:5000/users",
-          { ...this.form },
+          this.form,
           { headers: { Authorization: `Bearer ${this.token}` } }
         );
 
         this.showNotification("User berhasil ditambahkan!", "success");
         setTimeout(() => this.$router.push("/users"), 1800);
       } catch (error) {
-        console.error(error);
         const msg = error.response?.data?.message || "Gagal menambahkan user.";
         this.showNotification(msg, "error");
       }
@@ -109,7 +104,6 @@ export default {
 </script>
 
 <style scoped>
-/* ====== Layout dan form ====== */
 .dashboard-wrapper {
   background: linear-gradient(180deg, #f9f3f3, #fff);
   min-height: 100vh;
@@ -118,9 +112,8 @@ export default {
   align-items: flex-start;
   padding: 80px 60px;
   box-sizing: border-box;
-  position: relative; 
+  position: relative;
 }
-
 .dashboard-container {
   width: 100%;
   max-width: 800px;
@@ -131,12 +124,10 @@ export default {
   align-items: flex-start;
   gap: 25px;
 }
-
 .dashboard-header {
   text-align: left;
   width: 100%;
 }
-
 .dashboard-title {
   font-size: 32px;
   font-weight: 700;
@@ -144,7 +135,6 @@ export default {
   margin-bottom: 10px;
   text-align: left;
 }
-
 .title-underline {
   width: 80px;
   height: 4px;
@@ -153,7 +143,6 @@ export default {
   margin-bottom: 25px;
 }
 
-/* ===== FORM STYLE ===== */
 .form-container {
   background: #fff;
   border-radius: 12px;
@@ -162,7 +151,6 @@ export default {
   width: 100%;
   max-width: 600px;
 }
-
 .form-group {
   display: flex;
   flex-direction: column;
@@ -174,7 +162,6 @@ label {
   margin-bottom: 6px;
   color: #7a3e3e;
 }
-
 input,
 select {
   padding: 10px 12px;
@@ -188,9 +175,8 @@ select {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 20px;
+  margin-top: 15px;
 }
-
 .btn-add {
   background: #a26060;
   color: #fff;
@@ -201,11 +187,9 @@ select {
   cursor: pointer;
   transition: 0.3s;
 }
-
 .btn-add:hover {
   background: #7a3e3e;
 }
-
 .btn-cancel {
   background: #ccc;
   color: #333;
@@ -216,12 +200,10 @@ select {
   cursor: pointer;
   transition: 0.3s;
 }
-
 .btn-cancel:hover {
   background: #999;
 }
 
-/* ===== POPUP NOTIFICATION ===== */
 .popup {
   position: fixed;
   top: 30px;
@@ -236,21 +218,17 @@ select {
   z-index: 1000;
   opacity: 0.95;
 }
-
 .popup.success {
   background-color: #4caf50;
 }
-
 .popup.error {
   background-color: #f44336;
 }
 
-/* Animasi muncul/hilang */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.5s;
 }
-
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;

@@ -7,8 +7,8 @@
         <div class="title-underline"></div>
       </div>
 
-      <!-- Actions Bar -->
-      <div class="actions-bar">
+      <!-- Search Bar -->
+      <div class="Search-bar">
         <input
           type="text"
           v-model="searchQuery"
@@ -31,12 +31,12 @@
             <th>Email</th>
             <th>Telepon</th>
             <th>Dibuat</th>
-            <th>Aksi</th>
+            <th v-if="userRole === 'HCM'">Aksi</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(user, index) in paginatedUsers" :key="user.id">
-            <td>{{ index + 1 + (currentPage - 1) * perPage }}</td>
+            <td>{{ (currentPage - 1) * perPage + index + 1 }}</td>
             <td>{{ user.id }}</td>
             <td>{{ user.username }}</td>
             <td>{{ user.role }}</td>
@@ -53,7 +53,7 @@
             </td>
           </tr>
           <tr v-if="filteredUsers.length === 0">
-            <td :colspan="userRole === 'HCM' ? 10 : 9" class="text-center">
+            <td :colspan="userRole === 'HCM' ? 8 : 7" class="text-center">
               Tidak ada kandidat.
             </td>
           </tr>
@@ -101,8 +101,8 @@ export default {
     return {
       users: [],
       searchQuery: "",
-      token: user.token || "",
-      userRole: user.role || "",
+      token: user.token,
+      userRole: user.role,
       perPage: 10,
       currentPage: 1,
       alertMessage: "",
@@ -114,8 +114,14 @@ export default {
   },
   computed: {
     filteredUsers() {
-      return this.users
-        .filter((c) => this.matchSearch(c));
+      const query = this.searchQuery.toLowerCase();
+      return this.users.filter(user =>
+        user.username?.toLowerCase().includes(query) ||
+        user.role?.toLowerCase().includes(query) ||
+        user.email?.toLowerCase().includes(query) ||
+        user.telp?.includes(query) ||
+        String(user.id).includes(query) // TAMBAHKAN PENCARIAN BERDASARKAN ID
+      );
     },
     paginatedUsers() {
       const start = (this.currentPage - 1) * this.perPage;
@@ -141,18 +147,8 @@ export default {
         });
         this.users = res.data;
       } catch (err) {
-        console.error(err);
         this.showCustomAlert("Gagal memuat data user.");
       }
-    },
-    matchSearch(u) {
-      const q = this.searchQuery.toLowerCase();
-      return (
-          u.username.toLowerCase().includes(q) ||
-          (u.role && u.role.toLowerCase().includes(q)) ||
-          (u.email && u.email.toLowerCase().includes(q)) ||
-          (u.telp && u.telp.includes(q))
-      );
     },
     goToAddUser() {
       this.$router.push("/add-user");
@@ -175,8 +171,9 @@ export default {
       });
     },
     formatDate(dateStr) {
+      if (!dateStr) return '-';
       const date = new Date(dateStr);
-      return date.toLocaleString("id-ID", {
+      return date.toLocaleDateString("id-ID", {
         day: "2-digit",
         month: "short",
         year: "numeric",
@@ -238,8 +235,8 @@ export default {
   margin-bottom: 15px;
 }
 
-/* Actions Bar */
-.actions-bar {
+/* Search Bar */
+.Search-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -264,12 +261,6 @@ export default {
 }
 
 /* Table Styling */
-.table-title {
-  font-size: 22px;
-  font-weight: 600;
-  color: #7a3e3e;
-  margin-top: 10px;
-}
 .request-table {
   width: 100%;
   border-collapse: collapse;
@@ -331,46 +322,12 @@ export default {
   background: #a62015;
 }
 
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.modal {
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
-  width: 350px;
-}
-.modal label {
-  display: block;
-  margin-top: 10px;
-  font-weight: 500;
-}
-.modal input,
-.modal select {
-  width: 100%;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  margin-top: 5px;
-}
-.modal-actions {
-  margin-top: 15px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 /* Pagination */
 .pagination {
-  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  margin-top: 10px;
   gap: 10px;
 }
 .pagination button {
@@ -379,9 +336,16 @@ export default {
   border-radius: 6px;
   background: #fff;
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+.pagination button:hover {
+  background: #a26060;
+  color: white;
+  border-color: #a26060;
 }
 .pagination button:disabled {
   background: #eee;
+  color: #999;
   cursor: not-allowed;
 }
 
@@ -393,6 +357,7 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
+  z-index: 9999;
 }
 .alert-box {
   background: white;

@@ -7,7 +7,7 @@
       </div>
 
       <div class="form-container">
-        <form @submit.prevent="testAptitude">
+        <form @submit.prevent="submitForm">
           <div class="form-group">
             <label>Nama Kandidat</label>
             <input v-model="form.candidate_name" readonly />
@@ -15,16 +15,12 @@
 
           <div class="form-group">
             <label>Tanggal Tes</label>
-            <input v-model="form.tanggal" type="date" required />
+            <input v-model="form.test_date" type="date" required />
           </div>
 
           <div class="form-group">
             <label>Kemampuan Wajib</label>
-            <input
-              v-model="form.must_have_skill"
-              type="must_have_skill"
-              required
-            />
+            <input v-model="form.must_have_skill" required />
           </div>
 
           <div class="form-group">
@@ -37,18 +33,14 @@
 
           <div class="form-group">
             <label>Aptitude Score</label>
-            <input
-              v-model="form.aptitude_score"
-              type="aptitude_score"
-              required
-            />
+            <input v-model="form.aptitude_score" type="number" step="0.01" required />
           </div>
 
           <div class="form-group">
             <label>Lanjut?</label>
             <select v-model="form.continue_next" required>
-              <option value="Ya">Ya</option>
-              <option value="Tidak">Tidak</option>
+              <option value="ya">Ya</option>
+              <option value="tidak">Tidak</option>
             </select>
           </div>
 
@@ -58,21 +50,23 @@
           </div>
 
           <div class="form-actions">
-            <button type="submit" class="btn-add">Simpan</button>
+            <button type="submit" class="btn-add">
+              Simpan
+            </button>
             <button type="button" class="btn-cancel" @click="goBack">
               Batal
             </button>
           </div>
         </form>
       </div>
-    </div>
 
-    <!-- Pop-up Notification -->
-    <transition name="fade">
-      <div v-if="showPopup" :class="['popup', popupType]">
-        <p>{{ popupMessage }}</p>
-      </div>
-    </transition>
+      <!-- Pop-up Notification -->
+      <transition name="fade">
+        <div v-if="showPopup" :class="['popup', popupType]">
+          <p>{{ popupMessage }}</p>
+        </div>
+      </transition>
+    </div>
   </div>
 </template>
 
@@ -80,52 +74,54 @@
 import axios from "axios";
 
 export default {
-  name: "TestAptitudeForm",
+  name: "AptitudeTestForm",
   data() {
     const user = JSON.parse(localStorage.getItem("user")) || {};
-    const selected =
-      JSON.parse(localStorage.getItem("selectedCandidate")) || {};
+    const selected = JSON.parse(localStorage.getItem("selectedCandidate")) || {};
+
     return {
       form: {
-        request_candidate_id: selected.request_candidate_id || "",
+        request_candidate_id: selected.rc_id || "",
         candidate_name: selected.candidate_name || "",
-        tanggal: selected.test_date
-          ? new Date(selected.test_date).toISOString().substr(0, 10)
-          : "",
-        must_have_skill: "",
-        motivation: "",
-        aptitude_score: "",
-        continue_next: "",
-        notes: "",
+        test_date: this.formatDate(selected.test_date),
+        must_have_skill: selected.must_have_skill || "",
+        motivation: selected.motivation || "",
+        aptitude_score: selected.aptitude_score || "",
+        continue_next: selected.continue_next || "",
+        notes: selected.notes || "",
+        aptitude_test_id: selected.aptitude_test_id || null,
       },
-      token: user.token || "",
+      token: user.token,
       showPopup: false,
       popupMessage: "",
       popupType: "",
     };
   },
   methods: {
-    async testAptitude() {
+    formatDate(dateStr) {
+      if (!dateStr) return "";
+      return dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+    },
+    async submitForm() {
       try {
-        await axios.post(
-          "http://localhost:5000/aptitude_tests",
-          {
-            request_candidate_id: this.form.request_candidate_id,
-            test_date: this.form.tanggal,
-            must_have_skill: this.form.must_have_skill,
-            motivation: this.form.motivation,
-            aptitude_score: this.form.aptitude_score,
-            continue_next: this.form.continue_next,
-            notes: this.form.notes,
-          },
-          { headers: { Authorization: `Bearer ${this.token}` } }
-        );
+        const payload = {
+          request_candidate_id: this.form.request_candidate_id,
+          test_date: this.form.test_date,
+          must_have_skill: this.form.must_have_skill,
+          motivation: this.form.motivation,
+          aptitude_score: this.form.aptitude_score,
+          continue_next: this.form.continue_next,
+          notes: this.form.notes,
+        };
+
+        await axios.post("http://localhost:5000/aptitude_tests", payload, {
+          headers: { Authorization: `Bearer ${this.token}` },
+        });
 
         this.showNotification("Data berhasil disimpan!", "success");
         setTimeout(() => this.$router.push("/aptitude-tests"), 1800);
       } catch (error) {
-        console.error(error);
-        const msg = error.response?.data?.message || "Gagal menambahkan data.";
+        const msg = error.response?.data?.message || "Terjadi kesalahan.";
         this.showNotification(msg, "error");
       }
     },
@@ -155,7 +151,6 @@ export default {
   box-sizing: border-box;
   position: relative;
 }
-
 .dashboard-container {
   width: 100%;
   max-width: 800px;
@@ -166,12 +161,10 @@ export default {
   align-items: flex-start;
   gap: 25px;
 }
-
 .dashboard-header {
   text-align: left;
   width: 100%;
 }
-
 .dashboard-title {
   font-size: 32px;
   font-weight: 700;
@@ -179,7 +172,6 @@ export default {
   margin-bottom: 10px;
   text-align: left;
 }
-
 .title-underline {
   width: 80px;
   height: 4px;
@@ -196,7 +188,6 @@ export default {
   width: 100%;
   max-width: 600px;
 }
-
 .form-group {
   display: flex;
   flex-direction: column;
@@ -218,7 +209,6 @@ textarea {
   font-size: 14px;
   font-family: inherit;
 }
-
 textarea {
   resize: none;
 }
@@ -229,7 +219,6 @@ textarea {
   gap: 10px;
   margin-top: 20px;
 }
-
 .btn-add {
   background: #a26060;
   color: #fff;
@@ -240,11 +229,9 @@ textarea {
   cursor: pointer;
   transition: 0.3s;
 }
-
 .btn-add:hover {
   background: #7a3e3e;
 }
-
 .btn-cancel {
   background: #ccc;
   color: #333;
@@ -255,12 +242,10 @@ textarea {
   cursor: pointer;
   transition: 0.3s;
 }
-
 .btn-cancel:hover {
   background: #999;
 }
 
-/* Popup */
 .popup {
   position: fixed;
   top: 30px;
@@ -275,11 +260,9 @@ textarea {
   z-index: 1000;
   opacity: 0.95;
 }
-
 .popup.success {
   background-color: #4caf50;
 }
-
 .popup.error {
   background-color: #f44336;
 }
@@ -288,7 +271,6 @@ textarea {
 .fade-leave-active {
   transition: opacity 0.5s;
 }
-
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;

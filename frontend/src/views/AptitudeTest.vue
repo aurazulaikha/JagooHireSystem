@@ -1,3 +1,4 @@
+<!-- AptitudeTest.vue -->
 <template>
   <div class="dashboard-wrapper">
     <div class="dashboard-container">
@@ -7,8 +8,8 @@
         <div class="title-underline"></div>
       </div>
 
-      <!-- Actions Bar -->
-      <div class="actions-bar">
+      <!-- Search Bar -->
+      <div class="search-bar">
         <input
           type="text"
           v-model="searchQuery"
@@ -20,7 +21,7 @@
       <!-- ========== TABEL 1: BELUM MELAKUKAN APTITUDE TEST ========== -->
       <p class="dashboard-subtitle">Belum Melakukan Aptitude Test</p>
       <div class="table-scroll-wrapper">
-        <table class="request-table">
+        <table class="aptitude-table">
           <thead>
             <tr>
               <th>No</th>
@@ -42,20 +43,14 @@
             </tr>
           </thead>
           <tbody>
-            <tr
-              v-for="(p, index) in filteredPending"
-              :key="p.request_candidate_id"
-            >
-              <td>{{ index + 1 }}</td>
-              <td>{{ p.request_candidate_id }}</td>
+            <tr v-for="(p, index) in paginatedPending" :key="p.rc_id">
+              <td>{{ (currentPagePending - 1) * itemsPerPage + index + 1 }}</td>
+              <td>{{ p.rc_id }}</td>
               <td>{{ p.candidate_name }}</td>
               <td>{{ p.applied_role }}</td>
               <td>{{ p.requested_role }}</td>
               <td>
-                <a
-                  v-if="p.candidate_email"
-                  :href="`mailto:${p.candidate_email}`"
-                >
+                <a v-if="p.candidate_email" :href="`mailto:${p.candidate_email}`">
                   {{ p.candidate_email }}
                 </a>
                 <span v-else>—</span>
@@ -68,7 +63,7 @@
               <td>{{ p.work_schedule }}</td>
               <td>{{ p.level }}</td>
               <td>{{ p.candidate_status }}</td>
-              <td>{{ p.test_date ? formatDate(p.test_date) : "-" }}</td>
+              <td>{{ p.test_date ? formatCellValue('test_date', p.test_date) : "-" }}</td>
               <td v-if="userRole === 'HCM'" class="actions-cell">
                 <button class="btn-edit" @click="openScheduleModal(p)">
                   Atur Jadwal
@@ -78,7 +73,7 @@
                 </button>
               </td>
             </tr>
-            <tr v-if="filteredPending.length === 0">
+            <tr v-if="paginatedPending.length === 0">
               <td colspan="17" class="text-center">
                 Tidak ada kandidat yang menunggu aptitude test.
               </td>
@@ -87,12 +82,23 @@
         </table>
       </div>
 
+      <!-- Pagination untuk tabel belum test -->
+      <div class="pagination" v-if="totalPagesPending > 1">
+        <button :disabled="currentPagePending === 1" @click="currentPagePending--">
+          Prev
+        </button>
+        <span>Halaman {{ currentPagePending }} dari {{ totalPagesPending }}</span>
+        <button :disabled="currentPagePending === totalPagesPending" @click="currentPagePending++">
+          Next
+        </button>
+      </div>
+
       <br />
 
       <!-- ========== TABEL 2: SUDAH MELAKUKAN APTITUDE TEST ========== -->
       <h2 class="dashboard-subtitle">Sudah Melakukan Aptitude Test</h2>
       <div class="table-scroll-wrapper">
-        <table class="request-table">
+        <table class="aptitude-table">
           <thead>
             <tr>
               <th>No</th>
@@ -116,20 +122,18 @@
               <th>Kemampuan Wajib</th>
               <th>Notes</th>
               <th>Candidate Created At</th>
+              <th v-if="userRole === 'HCM'">Aksi</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(t, index) in filteredDone" :key="t.id">
-              <td>{{ index + 1 }}</td>
-              <td>{{ t.request_candidate_id }}</td>
+            <tr v-for="(t, index) in paginatedDone" :key="t.aptitude_test_id">
+              <td>{{ (currentPageDone - 1) * itemsPerPage + index + 1 }}</td>
+              <td>{{ t.rc_id }}</td>
               <td>{{ t.candidate_name }}</td>
               <td>{{ t.applied_role }}</td>
               <td>{{ t.requested_role }}</td>
               <td>
-                <a
-                  v-if="t.candidate_email"
-                  :href="`mailto:${t.candidate_email}`"
-                >
+                <a v-if="t.candidate_email" :href="`mailto:${t.candidate_email}`">
                   {{ t.candidate_email }}
                 </a>
                 <span v-else>—</span>
@@ -141,26 +145,36 @@
               <td>{{ t.work_method }}</td>
               <td>{{ t.work_schedule }}</td>
               <td>{{ t.level }}</td>
-              <td>{{ formatDate(t.test_date) }}</td>
+              <td>{{ formatCellValue("test_date", t.test_date) }}</td>
               <td>{{ t.aptitude_score }}</td>
               <td>{{ t.candidate_status }}</td>
-              <td>
-                <span
-                  :class="[
-                    'status-badge',
-                    getContinueNextClass(t.continue_next),
-                  ]"
-                >
-                  {{ t.continue_next }}
+               <td>
+                <span v-if="getCellClass('continue_next', t.continue_next)" 
+                      :class="['status-badge', getCellClass('continue_next', t.continue_next)]">
+                  {{ formatCellValue("continue_next", t.continue_next) }}
                 </span>
+                <span v-else>{{ formatCellValue("continue_next", t.continue_next) }}</span>
               </td>
-
-              <td>{{ t.motivation }}</td>
+              <td>
+                <span v-if="getCellClass('motivation', t.motivation)" 
+                      :class="['status-badge', getCellClass('motivation', t.motivation)]">
+                  {{ formatCellValue("motivation", t.motivation) }}
+                </span>
+                <span v-else>{{ formatCellValue("motivation", t.motivation) }}</span>
+              </td>
               <td>{{ t.must_have_skill }}</td>
               <td>{{ t.notes }}</td>
-              <td>{{ formatDate(t.test_created_at) }}</td>
+              <td>{{ formatCellValue("test_created_at", t.test_created_at) }}</td>
+              <td v-if="userRole === 'HCM'" class="actions-cell">
+                <button class="btn-edit" @click="editTest(t)">
+                  Edit
+                </button>
+                <button class="btn-delete" @click="deleteTest(t)">
+                  Hapus
+                </button>
+              </td>
             </tr>
-            <tr v-if="filteredDone.length === 0">
+            <tr v-if="paginatedDone.length === 0">
               <td colspan="22" class="text-center">
                 Belum ada kandidat yang melakukan aptitude test.
               </td>
@@ -169,13 +183,13 @@
         </table>
       </div>
 
-      <!-- Pagination -->
-      <div class="pagination" v-if="totalPages > 1">
-        <button :disabled="currentPage === 1" @click="currentPage--">
+      <!-- Pagination untuk tabel sudah test -->
+      <div class="pagination" v-if="totalPagesDone > 1">
+        <button :disabled="currentPageDone === 1" @click="currentPageDone--">
           Prev
         </button>
-        <span>Halaman {{ currentPage }} dari {{ totalPages }}</span>
-        <button :disabled="currentPage === totalPages" @click="currentPage++">
+        <span>Halaman {{ currentPageDone }} dari {{ totalPagesDone }}</span>
+        <button :disabled="currentPageDone === totalPagesDone" @click="currentPageDone++">
           Next
         </button>
       </div>
@@ -195,12 +209,27 @@
     <div class="alert-box">
       <h3>Atur Jadwal Aptitude Test</h3>
       <p><strong>Kandidat:</strong> {{ selectedCandidate.candidate_name }}</p>
-
       <input v-model="scheduleDate" type="date" />
-
       <div class="alert-actions">
         <button @click="saveSchedule">Simpan</button>
         <button @click="closeScheduleModal">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- POPUP HAPUS -->
+  <div v-if="showDeleteModal" class="modal-overlay-schedule">
+    <div class="alert-box">
+      <h3>Hapus Data Aptitude Test</h3>
+      <p><strong>Konfirmasi Penghapusan</strong></p>
+      <p>Apakah Anda yakin ingin menghapus data aptitude test untuk:</p>
+      <p>
+        <strong>{{ candidateToDelete?.candidate_name }}</strong>
+      </p>
+      <p>Data yang dihapus tidak dapat dikembalikan.</p>
+      <div class="alert-actions">
+        <button @click="confirmDelete" class="btn-delete">Hapus</button>
+        <button @click="closeDeleteModal">Batal</button>
       </div>
     </div>
   </div>
@@ -214,66 +243,61 @@ export default {
   data() {
     const user = JSON.parse(localStorage.getItem("user")) || {};
     return {
-      tests: [],
       searchQuery: "",
       token: user.token || "",
       userRole: user.role || "",
       pendingAptitude: [],
       doneAptitude: [],
-
-      perPage: 10,
-      currentPage: 1,
+      currentPagePending: 1,
+      currentPageDone: 1,
+      itemsPerPage: 10,
       showAlert: false,
       alertMessage: "",
-
       showScheduleModal: false,
       selectedCandidate: {},
       scheduleDate: "",
+      showDeleteModal: false,
+      candidateToDelete: null,
     };
   },
   computed: {
-  filteredPending() {
-    const q = this.searchQuery.toLowerCase();
-    return this.pendingAptitude.filter(
-      (p) =>
-        (p.candidate_name || "").toLowerCase().includes(q) ||
-        String(p.request_candidate_id).includes(q) ||
-        (p.applied_role || "").toLowerCase().includes(q) ||
-        (p.requested_role || "").toLowerCase().includes(q)
-    );
-  },
-
-  filteredDone() {
-    const q = this.searchQuery.toLowerCase();
-    return this.doneAptitude.filter(
-      (t) =>
-        (t.candidate_name || "").toLowerCase().includes(q) ||
-        String(t.request_candidate_id).includes(q) ||
-        (t.applied_role || "").toLowerCase().includes(q) ||
-        (t.requested_role || "").toLowerCase().includes(q)
-    );
-  },
-    filteredTests() {
-      const q = this.searchQuery.toLowerCase();
-      return this.tests.filter(
-        (t) =>
-          t.request_candidate_id.toString().includes(q) ||
-          (t.stack_eval && t.stack_eval.toLowerCase().includes(q)) ||
-          (t.portfolio_eval && t.portfolio_eval.toLowerCase().includes(q)) ||
-          (t.notes && t.notes.toLowerCase().includes(q))
+     filteredPending() {
+      const query = this.searchQuery.toLowerCase();
+      return this.pendingAptitude.filter(p => 
+        p.candidate_name?.toLowerCase().includes(query) ||
+        String(p.rc_id).includes(query) ||
+        p.applied_role?.toLowerCase().includes(query) ||
+        p.requested_role?.toLowerCase().includes(query)
       );
     },
-    paginatedTests() {
-      const start = (this.currentPage - 1) * this.perPage;
-      return this.filteredTests.slice(start, start + this.perPage);
+    filteredDone() {
+      const query = this.searchQuery.toLowerCase();
+      return this.doneAptitude.filter(t =>
+        t.candidate_name?.toLowerCase().includes(query) ||
+        String(t.rc_id).includes(query) ||
+        t.applied_role?.toLowerCase().includes(query) ||
+        t.requested_role?.toLowerCase().includes(query)
+      );
     },
-    totalPages() {
-      return Math.ceil(this.filteredTests.length / this.perPage);
+    paginatedPending() {
+      const start = (this.currentPagePending - 1) * this.itemsPerPage;
+      return this.filteredPending.slice(start, start + this.itemsPerPage);
+    },
+    totalPagesPending() {
+      return Math.ceil(this.filteredPending.length / this.itemsPerPage);
+    },
+    paginatedDone() {
+      const start = (this.currentPageDone - 1) * this.itemsPerPage;
+      return this.filteredDone.slice(start, start + this.itemsPerPage);
+    },
+    totalPagesDone() {
+      return Math.ceil(this.filteredDone.length / this.itemsPerPage);
     },
   },
   watch: {
     searchQuery() {
-      this.currentPage = 1;
+      this.currentPagePending = 1;
+      this.currentPageDone = 1;
     },
   },
   mounted() {
@@ -292,17 +316,13 @@ export default {
         this.pendingAptitude = res.data.pending_aptitude;
         this.doneAptitude = res.data.done_aptitude;
       } catch (err) {
-        console.error(err);
         this.showCustomAlert("Gagal memuat data overview aptitude test.");
       }
     },
     openScheduleModal(candidate) {
       this.selectedCandidate = candidate;
-
-      this.scheduleDate = candidate.test_date
-        ? new Date(candidate.test_date).toISOString().substr(0, 10)
-        : "";
-
+      this.scheduleDate = candidate.test_date ? 
+        new Date(candidate.test_date).toISOString().substr(0, 10) : "";
       this.showScheduleModal = true;
     },
     closeScheduleModal() {
@@ -328,14 +348,12 @@ export default {
         await this.getAptitudeOverview(); // refresh tabel
         this.closeScheduleModal();
       } catch (err) {
-        console.error(err);
         this.showCustomAlert("Gagal menyimpan jadwal tes.");
       }
     },
-
     async goToPenilaian(candidate) {
       const res = await axios.get(
-        `http://localhost:5000/aptitude_tests/${candidate.request_candidate_id}`,
+        `http://localhost:5000/aptitude_tests/${candidate.rc_id}`,
         { headers: { Authorization: `Bearer ${this.token}` } }
       );
 
@@ -344,33 +362,96 @@ export default {
       localStorage.setItem(
         "selectedCandidate",
         JSON.stringify({
-          ...candidate,
-          test_date: existing.test_date || "", // ambil dari aptitude_tests
+          rc_id: candidate.rc_id,
+          candidate_name: candidate.candidate_name,
+          test_date: existing.test_date || "",
         })
       );
 
       this.$router.push("/aptitude-test/penilaian");
     },
-    async deleteTest(id) {
+    formatCellValue(key, value) {
+      if (!value) return "—";
+
+      const dateKeys = ["test_date", "test_created_at"];
+
+      if (dateKeys.includes(key)) {
+        const date = new Date(value);
+        if (!isNaN(date.getTime())) {
+          return date.toLocaleDateString("id-ID", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
+        }
+      }
+
+      if (key === "motivation") {
+        if (value === "green_flag") return "Green Flag";
+        if (value === "red_flag") return "Red Flag";
+      }
+
+      return value;
+    },
+    getCellClass(key, value) {
+      if (key === "motivation") {
+        if (value === "green_flag") return "cell-green";
+        if (value === "red_flag") return "cell-red";
+      }
+      if (key === "continue_next") {
+        const v = String(value).toLowerCase();
+        if (v === "ya") return "cell-green";
+        if (v === "tidak") return "cell-red";
+      }
+      return "";
+    },
+    editTest(test) {
+      const testDate = test.test_date ? 
+        new Date(test.test_date).toISOString().split("T")[0] : "";
+      
+      localStorage.setItem(
+        "selectedCandidate",
+        JSON.stringify({
+          rc_id: test.rc_id,
+          candidate_name: test.candidate_name,
+          test_date: testDate,
+          must_have_skill: test.must_have_skill,
+          motivation: test.motivation,
+          aptitude_score: test.aptitude_score,
+          continue_next: test.continue_next,
+          notes: test.notes,
+          aptitude_test_id: test.aptitude_test_id,
+          mode: "edit",
+        })
+      );
+
+      this.$router.push("/aptitude-test/penilaian");
+    },
+    deleteTest(test) {
+      this.candidateToDelete = test;
+      this.showDeleteModal = true;
+    },
+    async confirmDelete() {
+      if (!this.candidateToDelete) return;
+
       try {
-        await axios.delete(`http://localhost:5000/aptitude_tests/${id}`, {
-          headers: { Authorization: `Bearer ${this.token}` },
-        });
-        this.showCustomAlert("Aptitude test berhasil dihapus!");
-        this.getAptitudeTests();
+        await axios.delete(
+          `http://localhost:5000/aptitude_tests/${this.candidateToDelete.aptitude_test_id}`,
+          {
+            headers: { Authorization: `Bearer ${this.token}` },
+          }
+        );
+
+        this.showCustomAlert("Data aptitude berhasil dihapus!");
+        await this.getAptitudeOverview();
+        this.closeDeleteModal();
       } catch (err) {
-        console.error(err);
-        this.showCustomAlert("Gagal menghapus data.");
+        this.showCustomAlert("Gagal menghapus data aptitude test.");
       }
     },
-    formatDate(dateStr) {
-      if (!dateStr) return "-";
-      const date = new Date(dateStr);
-      return date.toLocaleString("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
+    closeDeleteModal() {
+      this.showDeleteModal = false;
+      this.candidateToDelete = null;
     },
     showCustomAlert(message) {
       this.alertMessage = message;
@@ -379,19 +460,12 @@ export default {
     closeAlert() {
       this.showAlert = false;
     },
-    getContinueNextClass(value) {
-      if (!value) return "";
-      const v = String(value).toLowerCase();
-      if (v === "ya") return "cell-green";
-      if (v === "tidak") return "cell-red";
-      return "";
-    },
   },
 };
 </script>
 
 <style scoped>
-/* ===== TABLE SCROLL WRAPPER ===== */
+/* TABLE SCROLL WRAPPER */
 .table-scroll-wrapper {
   width: 100%;
   overflow-x: auto;
@@ -450,8 +524,8 @@ export default {
   color: #7a3e3e;
 }
 
-/* Actions Bar */
-.actions-bar {
+/* Search Bar */
+.search-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -462,27 +536,9 @@ export default {
   border-radius: 8px;
   border: 1px solid #ccc;
 }
-.btn-add {
-  background: #a26060;
-  color: #fff;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-}
-.btn-add:hover {
-  background: #7a3e3e;
-}
 
 /* Table Styling */
-.table-title {
-  font-size: 22px;
-  font-weight: 600;
-  color: #7a3e3e;
-  margin-top: 10px;
-}
-.request-table {
+.aptitude-table {
   width: 100%;
   border-collapse: collapse;
   border: 1px solid #e0d5d5;
@@ -490,21 +546,21 @@ export default {
   overflow: hidden;
   background: #fff;
 }
-.request-table th,
-.request-table td {
+.aptitude-table th,
+.aptitude-table td {
   padding: 12px 10px;
   text-align: center;
   border-bottom: 1px solid #eee;
 }
-.request-table th {
+.aptitude-table th {
   background-color: #a26060;
   color: #fff;
   font-weight: 600;
 }
-.request-table tbody tr:nth-child(even) {
+.aptitude-table tbody tr:nth-child(even) {
   background-color: #faf6f6;
 }
-.request-table tbody tr:hover {
+.aptitude-table tbody tr:hover {
   background-color: #f5eaea;
   transition: 0.3s;
 }
@@ -544,31 +600,6 @@ export default {
 }
 
 /* Modal */
-.modal {
-  background: white;
-  padding: 25px;
-  border-radius: 12px;
-  width: 340px;
-  text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-}
-.modal label {
-  display: block;
-  margin-top: 10px;
-  font-weight: 500;
-}
-.modal input,
-.modal select {
-  width: 100%;
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  margin-top: 5px;
-}
-.modal h3 {
-  margin-bottom: 12px;
-  color: #7a3e3e;
-}
 .modal-overlay-schedule {
   position: fixed;
   inset: 0;
@@ -579,11 +610,47 @@ export default {
   z-index: 9000; /* LEBIH RENDAH */
 }
 
+/* CELL COLORING */
+.cell-green {
+  color: #0d8b1f;
+  font-weight: 600;
+}
+
+.cell-red {
+  color: #c20b0b;
+  font-weight: 600;
+}
+
+.aptitude-table td.cell-green {
+  background-color: #e6f7ea;
+}
+
+.aptitude-table td.cell-red {
+  background-color: #fde8e8;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: white;
+  min-width: 70px;
+  text-align: center;
+}
+
+.status-badge.cell-green {
+  background-color: #0c8c41;
+}
+
+.status-badge.cell-red {
+  background-color: #ab2929;
+}
+
 /* Date */
-input[type="date"],
-input,
-select,
-textarea {
+input[type="date"] {
   width: 70%;
   padding: 8px;
   border-radius: 6px;
@@ -593,9 +660,10 @@ textarea {
 
 /* Pagination */
 .pagination {
-  margin-top: 10px;
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  margin-top: 10px;
   gap: 10px;
 }
 .pagination button {
@@ -604,9 +672,16 @@ textarea {
   border-radius: 6px;
   background: #fff;
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+.pagination button:hover {
+  background: #a26060;
+  color: white;
+  border-color: #a26060;
 }
 .pagination button:disabled {
   background: #eee;
+  color: #999;
   cursor: not-allowed;
 }
 
@@ -653,25 +728,5 @@ textarea {
 .alert-actions button:last-child {
   background: #ccc;
   color: #333;
-}
-/* Badge */
-.status-badge {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-  text-transform: capitalize;
-  color: white;
-  min-width: 70px;
-  text-align: center;
-}
-
-.status-badge.cell-green {
-  background-color: #0c8c41;
-}
-
-.status-badge.cell-red {
-  background-color: #ab2929;
 }
 </style>
