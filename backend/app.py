@@ -554,107 +554,146 @@ def link_request_candidate(current_user):
     mysql.connection.commit()
     cur.close()
 
-    log_action(current_user['user_id'], f'assign candidate_id={candidate_id} to request_id={request_id}', 'request_candidates')
+    log_action(current_user['user_id'], f'Assign kandidate id : {candidate_id} to request id : {request_id}', 'request candidates')
     return jsonify({'message': 'Kandidat berhasil ditautkan ke request'}), 201
 
+# ==============================
+# Lihat semua Request ↔ Candidate (HCM & AM & Director)
+# ==============================
 @app.route('/request_candidates', methods=['GET'])
 @token_required
-@role_required(['HCM'])
+@role_required(['HCM', 'AM', 'Director'])
 def get_all_request_candidates(current_user):
     cur = mysql.connection.cursor()
+
     cur.execute("""
-        SELECT rc.id, rc.request_id, c.id, c.name, c.email, c.no_telp, c.domisili, c.applied_role, c.status, rc.assigned_at
+        SELECT 
+            rc.id AS request_candidate_id,
+            r.id AS request_id,
+            c.name AS nama_kandidat,
+            c.applied_role AS role_dilamar,
+            r.role AS role_dibutuhkan,
+            c.email AS email_kandidat,
+            c.no_telp,
+            c.domisili,
+            r.company_name AS perusahaan,
+            r.location AS lokasi_kerja,
+            r.work_method AS metode_kerja,
+            r.work_schedule AS jadwal_kerja,
+            r.level AS level,
+            r.duration AS durasi,
+            r.quantity AS kuantitas,
+            r.max_salary AS maks_gaji,
+            r.current_stage AS stage,
+            c.status AS status_kandidat,
+            rc.assigned_at
+
         FROM request_candidates rc
         JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+
         ORDER BY rc.assigned_at DESC
     """)
+
     rows = cur.fetchall()
     cur.close()
 
     result = []
-    for r in rows:
+    for i, r in enumerate(rows, start=1):
         result.append({
-            'id': r[0],                # ID relasi request_candidate
-            'request_id': r[1],        # ID request
-            'candidate_id': r[2],      # ID kandidat
-            'name': r[3],
-            'email': r[4],
-            'no_telp': r[5],
-            'domisili': r[6],
-            'applied_role': r[7],
-            'status': r[8],
-            'assigned_at': str(r[9]) if r[9] else None
+            "no": i,
+            "request_candidate_id": r[0],
+            "request_id": r[1],
+            "nama_kandidat": r[2],
+            "role_dilamar": r[3],
+            "role_dibutuhkan": r[4],
+            "email_kandidat": r[5],
+            "no_telp": r[6],
+            "domisili": r[7],
+            "perusahaan": r[8],
+            "lokasi_kerja": r[9],
+            "metode_kerja": r[10],
+            "jadwal_kerja": r[11],
+            "level": r[12],
+            "durasi": r[13],
+            "kuantitas": r[14],
+            "maks_gaji": float(r[15]) if r[15] else None,
+            "stage": r[16],
+            "status_kandidat": r[17],
+            "assigned_at": str(r[18]) if r[18] else None
         })
 
     return jsonify(result), 200
 
-
-@app.route('/request_candidates/<int:request_id>', methods=['GET'])
+# ==============================
+# GET BY ID
+# ==============================
+@app.route('/request_candidates/<int:id>', methods=['GET'])
 @token_required
-def get_request_candidates(current_user, request_id):
+@role_required(['HCM', 'AM', 'Director'])
+def get_request_candidate_by_id(current_user, id):
     cur = mysql.connection.cursor()
+
     cur.execute("""
-        SELECT rc.id, c.id, c.name, c.email, c.no_telp, c.domisili, c.applied_role, c.status, rc.assigned_at
+        SELECT 
+            rc.id,
+            r.id AS request_id,
+            c.id AS candidate_id,
+            c.name,
+            r.role,
+            c.applied_role,
+            r.current_stage,
+            c.status
         FROM request_candidates rc
         JOIN candidates c ON rc.candidate_id = c.id
-        WHERE rc.request_id = %s
-    """, (request_id,))
-    rows = cur.fetchall()
+        JOIN requests r ON rc.request_id = r.id
+        WHERE rc.id = %s
+    """, (id,))
+
+    row = cur.fetchone()
     cur.close()
 
-    result = []
-    for r in rows:
-        result.append({
-            'id': r[0],
-            'candidate_id': r[1],
-            'name': r[2],
-            'email': r[3],
-            'no_telp': r[4],
-            'domisili': r[5],
-            'applied_role': r[6],
-            'status': r[7],
-            'assigned_at': str(r[8]) if r[8] else None
-        })
+    if not row:
+        return jsonify({'error': 'Data tidak ditemukan'}), 404
 
-    return jsonify(result)
+    return jsonify({
+        "request_candidate_id": row[0],
+        "request_id": row[1],
+        "candidate_id": row[2],
+        "nama_kandidat": row[3],
+        "role_dibutuhkan": row[4],
+        "role_dilamar": row[5],
+        "stage": row[6],
+        "status_kandidat": row[7]
+    }), 200
 
 # ==============================
-# Update Request ↔ Candidate Mapping (HCM)
+# UPDATE
 # ==============================
 @app.route('/request_candidates/<int:id>', methods=['PUT'])
 @token_required
-@role_required(['HCM'])
+@role_required(['HCM', 'AM', 'Director'])
 def update_request_candidate(current_user, id):
-    data = request.json or {}
+    data = request.get_json()
+
     request_id = data.get('request_id')
     candidate_id = data.get('candidate_id')
 
     if not request_id or not candidate_id:
-        return jsonify({'error': 'request_id dan candidate_id wajib diisi'}), 400
+        return jsonify({'message': 'Semua field wajib diisi'}), 400
 
     cur = mysql.connection.cursor()
-
-    # Cek apakah kombinasi request-candidate baru sudah ada
-    cur.execute("""
-        SELECT id FROM request_candidates
-        WHERE request_id = %s AND candidate_id = %s AND id != %s
-    """, (request_id, candidate_id, id))
-    existing = cur.fetchone()
-    if existing:
-        cur.close()
-        return jsonify({'message': 'Kandidat sudah terhubung dengan request ini'}), 409
-
-    # Update relasi
     cur.execute("""
         UPDATE request_candidates
-        SET request_id=%s, candidate_id=%s, assigned_at=NOW()
-        WHERE id=%s
+        SET request_id = %s, candidate_id = %s
+        WHERE id = %s
     """, (request_id, candidate_id, id))
+
     mysql.connection.commit()
     cur.close()
 
-    log_action(current_user['user_id'], f'update request_candidate id={id} to request_id={request_id}, candidate_id={candidate_id}', 'request_candidates')
-    return jsonify({'message': 'Relasi request-candidate berhasil diperbarui'}), 200
+    log_action(current_user['user_id'], f'Edit request kandidat, id : {id}', 'requests candidates')
+    return jsonify({'message': 'Berhasil diperbarui'}), 200
 
 # ==============================
 # Delete Request ↔ Candidate Mapping (HCM)
@@ -668,7 +707,7 @@ def delete_request_candidate(current_user, id):
     mysql.connection.commit()
     cur.close()
 
-    log_action(current_user['user_id'], f'delete request_candidate id={id}', 'request_candidates')
+    log_action(current_user['user_id'], f'Hapus request kandidat, id : {id}', 'request candidates')
     return jsonify({'message': 'Relasi request-candidate berhasil dihapus'}), 200
 
 # =========================================
