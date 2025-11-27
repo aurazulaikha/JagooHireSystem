@@ -25,14 +25,6 @@
         </router-link>
       </li>
 
-      <!-- Request Candidates (HCM only) -->
-      <li v-if="user && user.role === 'HCM'">
-        <router-link to="/request-candidates" active-class="active">
-          <i class="nc-icon nc-check-2"></i>
-          <p>Request Candidates</p>
-        </router-link>
-      </li>
-
       <!-- Tests -->
       <li v-if="user && user.role === 'HCM'">
         <router-link to="/aptitude-tests" active-class="active">

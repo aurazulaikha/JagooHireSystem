@@ -1145,16 +1145,177 @@ def delete_technical_test(current_user, test_id):
     return jsonify({'message': 'Technical test berhasil dihapus'}), 200
 
 # ==============================
-# Professional Tests (Director)
+# Professional Tests - Combined View (FIXED)
+# ==============================
+@app.route('/professional_tests/overview', methods=['GET'])
+@token_required
+@role_required(['Director'])
+def get_professional_overview(current_user):
+    cur = mysql.connection.cursor()
+
+    # Kandidat yang BELUM menjalani professional test (FIXED QUERY)
+    cur.execute("""
+        SELECT 
+            rc.id AS request_candidate_id,
+            rc.request_id,
+            rc.candidate_id,
+            c.name AS candidate_name,
+            c.email AS candidate_email,
+            c.no_telp,
+            c.domisili,
+            c.applied_role,
+            c.status AS candidate_status,
+            r.role AS requested_role,
+            r.company_name,
+            r.location,
+            r.work_method,
+            r.work_schedule,
+            r.level,
+            a.aptitude_score,
+            t.domain12_score AS technical_score,
+            t.continue_next,
+            p.test_date,
+            p.programming_fundamentals,
+            p.id AS professional_test_id  -- tambahkan ini untuk edit/hapus
+        FROM request_candidates rc
+        JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+        JOIN aptitude_tests a ON a.request_candidate_id = rc.id
+        JOIN technical_tests t ON t.request_candidate_id = rc.id
+        LEFT JOIN professional_tests p ON p.request_candidate_id = rc.id
+        WHERE p.programming_fundamentals IS NULL -- Belum professional test atau belum complete  
+            AND t.continue_next = 'ya'
+        ORDER BY rc.id DESC
+    """)
+    pending_columns = [d[0] for d in cur.description]
+    pending_list = [dict(zip(pending_columns, row)) for row in cur.fetchall()]
+
+    # Kandidat yang SUDAH menjalani professional test (done)
+    cur.execute("""
+        SELECT
+            p.id AS professional_test_id,
+            p.request_candidate_id,
+            p.test_date,
+            p.aptitude_score,
+            p.programming_fundamentals,
+            p.software_engineering,
+            p.portfolio_eval,
+            p.communication,
+            p.adaptability,
+            p.discipline,
+            p.commitment,
+            p.final_result,
+            p.notes,
+            p.created_at AS test_created_at,
+            rc.id AS rc_id,
+            rc.request_id,
+            rc.candidate_id,
+            c.name AS candidate_name,
+            c.email AS candidate_email,
+            c.no_telp,
+            c.domisili,
+            c.applied_role,
+            c.status AS candidate_status,
+            r.role AS requested_role,
+            r.company_name,
+            r.location,
+            r.work_method,
+            r.work_schedule,
+            r.level,
+            t.domain12_score AS technical_score
+        FROM professional_tests p
+        JOIN request_candidates rc ON p.request_candidate_id = rc.id
+        JOIN candidates c ON rc.candidate_id = c.id
+        JOIN requests r ON rc.request_id = r.id
+        LEFT JOIN technical_tests t ON t.request_candidate_id = rc.id
+        WHERE p.final_result IS NOT NULL
+                AND p.programming_fundamentals IS NOT NULL
+                AND p.software_engineering IS NOT NULL
+                AND p.portfolio_eval IS NOT NULL
+                AND p.communication IS NOT NULL
+                AND p.adaptability IS NOT NULL
+                AND p.discipline IS NOT NULL
+                AND p.commitment IS NOT NULL
+
+        ORDER BY p.created_at DESC
+    """)
+    done_columns = [d[0] for d in cur.description]
+    done_list = [dict(zip(done_columns, row)) for row in cur.fetchall()]
+
+    cur.close()
+
+    return jsonify({
+        "pending_professional": pending_list,
+        "done_professional": done_list
+    }), 200
+
+# ==============================
+# Schedule Professional Test
+# ==============================
+@app.route('/professional_tests/schedule', methods=['PATCH'])
+@token_required
+@role_required(['Director'])
+def schedule_professional_test(current_user):
+    data = request.json or {}
+    rc_id = data.get('request_candidate_id')
+    test_date = data.get('test_date')
+
+    if not rc_id or not test_date:
+        return jsonify({"message": "request_candidate_id and test_date required"}), 400
+
+    cur = mysql.connection.cursor()
+
+    # Buat record minimal jika belum ada, atau update test_date jika sudah ada
+    cur.execute("SELECT id FROM professional_tests WHERE request_candidate_id=%s", (rc_id,))
+    exists = cur.fetchone()
+
+    if exists:
+        cur.execute("""
+            UPDATE professional_tests
+            SET test_date = %s
+            WHERE request_candidate_id = %s
+        """, (test_date, rc_id))
+    else:
+        cur.execute("""
+            INSERT INTO professional_tests (request_candidate_id, test_date, created_at)
+            VALUES (%s, %s, NOW())
+        """, (rc_id, test_date))
+
+    mysql.connection.commit()
+    cur.close()
+
+    log_action(current_user['user_id'], f'Atur jadwal, request kandidat id : {rc_id}', 'professional tests')
+
+    return jsonify({"message": "Schedule saved successfully"}), 200
+
+# ==============================
+# Insert / Update Professional Test
 # ==============================
 @app.route('/professional_tests', methods=['POST'])
 @token_required
 @role_required(['Director'])
 def add_professional_test(current_user):
     data = request.json or {}
+
     rc_id = data.get('request_candidate_id')
+    if not rc_id:
+        return jsonify({"message": "request_candidate_id required"}), 400
+
+    cur = mysql.connection.cursor()
+
+    # Ambil aptitude_score dari aptitude_tests (ambil yang terbaru jika ada)
+    cur.execute("""
+        SELECT aptitude_score
+        FROM aptitude_tests
+        WHERE request_candidate_id = %s
+        ORDER BY id DESC
+        LIMIT 1
+    """, (rc_id,))
+    aptitude_row = cur.fetchone()
+    aptitude_score = aptitude_row[0] if aptitude_row else None
+
+    # Extract values (frontend tidak perlu mengirim aptitude_score)
     test_date = data.get('test_date')
-    aptitude_score = data.get('aptitude_score')
     programming_fundamentals = data.get('programming_fundamentals')
     software_engineering = data.get('software_engineering')
     portfolio_eval = data.get('portfolio_eval')
@@ -1165,144 +1326,545 @@ def add_professional_test(current_user):
     final_result = data.get('final_result')
     notes = data.get('notes')
 
-    cur = mysql.connection.cursor()
-    cur.execute("""
-        INSERT INTO professional_tests (
-            request_candidate_id, test_date, aptitude_score,
-            programming_fundamentals, software_engineering, portfolio_eval,
-            communication, adaptability, discipline, commitment,
-            final_result, notes, created_at
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-    """, (
-        rc_id, test_date, aptitude_score, programming_fundamentals,
-        software_engineering, portfolio_eval, communication,
-        adaptability, discipline, commitment, final_result, notes
-    ))
+    # Validation enum
+    valid_eval = ['incompetent', 'developing', 'advance']
+    valid_result = ['lulus', 'tidak_lulus']
+
+    for key, val in {
+        'software_engineering': software_engineering,
+        'portfolio_eval': portfolio_eval,
+        'communication': communication,
+        'adaptability': adaptability,
+        'discipline': discipline,
+        'commitment': commitment
+    }.items():
+        if val and val not in valid_eval:
+            cur.close()
+            return jsonify({"message": f"{key} invalid. Must be one of {valid_eval}"}), 400
+
+    if final_result and final_result not in valid_result:
+        cur.close()
+        return jsonify({"message": f"final_result invalid. Must be one of {valid_result}"}), 400
+
+    # programming_fundamentals should be numeric (decimal)
+    if programming_fundamentals is not None:
+        try:
+            programming_fundamentals = float(programming_fundamentals)
+        except (ValueError, TypeError):
+            cur.close()
+            return jsonify({"message": "programming_fundamentals must be a number"}), 400
+
+    # Check existing record professional_tests
+    cur.execute("SELECT id FROM professional_tests WHERE request_candidate_id=%s", (rc_id,))
+    exists = cur.fetchone()
+
+    if exists:
+        # UPDATE existing
+        cur.execute("""
+            UPDATE professional_tests
+            SET test_date=%s,
+                aptitude_score=%s,
+                programming_fundamentals=%s,
+                software_engineering=%s,
+                portfolio_eval=%s,
+                communication=%s,
+                adaptability=%s,
+                discipline=%s,
+                commitment=%s,
+                final_result=%s,
+                notes=%s,
+                created_at=NOW()
+            WHERE request_candidate_id=%s
+        """, (
+            test_date,
+            aptitude_score,
+            programming_fundamentals,
+            software_engineering,
+            portfolio_eval,
+            communication,
+            adaptability,
+            discipline,
+            commitment,
+            final_result,
+            notes,
+            rc_id
+        ))
+    else:
+        # INSERT baru
+        cur.execute("""
+            INSERT INTO professional_tests (
+                request_candidate_id, test_date, aptitude_score,
+                programming_fundamentals, software_engineering, portfolio_eval,
+                communication, adaptability, discipline, commitment,
+                final_result, notes, created_at
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+        """, (
+            rc_id,
+            test_date,
+            aptitude_score,
+            programming_fundamentals,
+            software_engineering,
+            portfolio_eval,
+            communication,
+            adaptability,
+            discipline,
+            commitment,
+            final_result,
+            notes
+        ))
+
     mysql.connection.commit()
 
-    # Update status kandidat berdasarkan hasil akhir
-    if final_result == 'lulus':
+    # UPDATE candidate + request stage
+    if final_result == "lulus":
         cur.execute("""
             UPDATE candidates c
-            JOIN request_candidates rc ON c.id = rc.candidate_id
+            JOIN request_candidates rc ON rc.candidate_id = c.id
             SET c.status = 'Onboarding'
-            WHERE rc.id=%s
+            WHERE rc.id = %s
+        """, (rc_id,))
+
+        cur.execute("""
+            UPDATE requests r
+            JOIN request_candidates rc ON rc.request_id = r.id
+            SET r.current_stage = 'Finish'
+            WHERE rc.id = %s
         """, (rc_id,))
     else:
         cur.execute("""
             UPDATE candidates c
-            JOIN request_candidates rc ON c.id = rc.candidate_id
+            JOIN request_candidates rc ON rc.candidate_id = c.id
             SET c.status = 'Not Available'
-            WHERE rc.id=%s
+            WHERE rc.id = %s
         """, (rc_id,))
+
+        cur.execute("""
+            UPDATE requests r
+            JOIN request_candidates rc ON rc.request_id = r.id
+            SET r.current_stage = 'Professional'
+            WHERE rc.id = %s
+        """, (rc_id,))
+
     mysql.connection.commit()
     cur.close()
 
-    log_action(current_user['user_id'], f'create professional_test for rc_id={rc_id}', 'professional_tests')
-    return jsonify({'message': 'Professional test saved successfully'}), 201
+    log_action(current_user['user_id'], f'Penilaian, request kandidat id : {rc_id}', 'professional tests')
 
+    return jsonify({"message": "Professional test saved successfully"}), 201
+
+# ==============================
+# GET ONE TEST BY request_candidate_id
+# ==============================
 @app.route('/professional_tests/<int:rc_id>', methods=['GET'])
 @token_required
-def get_professional_tests(current_user, rc_id):
+def get_professional_test_detail(current_user, rc_id):
     cur = mysql.connection.cursor()
+
     cur.execute("""
         SELECT id, test_date, aptitude_score, programming_fundamentals,
                software_engineering, portfolio_eval, communication,
                adaptability, discipline, commitment, final_result,
                notes, created_at
         FROM professional_tests
-        WHERE request_candidate_id=%s
+        WHERE request_candidate_id = %s
+        LIMIT 1
     """, (rc_id,))
-    rows = cur.fetchall()
+
+    row = cur.fetchone()
     cur.close()
 
-    return jsonify([
-        {
-            'id': r[0],
-            'test_date': str(r[1]) if r[1] else None,
-            'aptitude_score': float(r[2]) if r[2] is not None else None,
-            'programming_fundamentals': r[3],
-            'software_engineering': r[4],
-            'portfolio_eval': r[5],
-            'communication': r[6],
-            'adaptability': r[7],
-            'discipline': r[8],
-            'commitment': r[9],
-            'final_result': r[10],
-            'notes': r[11],
-            'created_at': str(r[12])
-        } for r in rows
-    ])
+    if not row:
+        return jsonify({})
+
+    return jsonify({
+        'id': row[0],
+        'test_date': str(row[1]) if row[1] else None,
+        'aptitude_score': float(row[2]) if row[2] is not None else None,
+        'programming_fundamentals': float(row[3]) if row[3] is not None else None,
+        'software_engineering': row[4],
+        'portfolio_eval': row[5],
+        'communication': row[6],
+        'adaptability': row[7],
+        'discipline': row[8],
+        'commitment': row[9],
+        'final_result': row[10],
+        'notes': row[11],
+        'created_at': str(row[12]) if row[12] else None
+    })
 
 # ==============================
-# Get all Professional Tests (Director)
+# DELETE Professional Test
 # ==============================
-@app.route('/professional_tests', methods=['GET'])
+@app.route('/professional_tests/<int:test_id>', methods=['DELETE'])
 @token_required
-def get_all_professional_tests(current_user):
+@role_required(['Director'])
+def delete_professional_test(current_user, test_id):
     cur = mysql.connection.cursor()
-    cur.execute("""
-        SELECT id, request_candidate_id, test_date, aptitude_score, programming_fundamentals,
-               software_engineering, portfolio_eval, communication,
-               adaptability, discipline, commitment, final_result,
-               notes, created_at
-        FROM professional_tests
-        ORDER BY created_at DESC
-    """)
-    rows = cur.fetchall()
+    
+    # Get request_candidate_id before deleting for logging
+    cur.execute("SELECT request_candidate_id FROM professional_tests WHERE id=%s", (test_id,))
+    result = cur.fetchone()
+    
+    if not result:
+        cur.close()
+        return jsonify({"message": "Professional test not found"}), 404
+    
+    request_candidate_id = result[0]
+    
+    # Delete the professional test
+    cur.execute("DELETE FROM professional_tests WHERE id=%s", (test_id,))
+    mysql.connection.commit()
     cur.close()
 
-    return jsonify([
-        {
-            'id': r[0],
-            'request_candidate_id': r[1],
-            'test_date': str(r[2]) if r[2] else None,
-            'aptitude_score': float(r[3]) if r[3] is not None else None,
-            'programming_fundamentals': r[4],
-            'software_engineering': r[5],
-            'portfolio_eval': r[6],
-            'communication': r[7],
-            'adaptability': r[8],
-            'discipline': r[9],
-            'commitment': r[10],
-            'final_result': r[11],
-            'notes': r[12],
-            'created_at': str(r[13])
-        } for r in rows
-    ])
+    log_action(current_user['user_id'], f'Hapus data penilaian, id : {request_candidate_id}', 'professional tests')
 
+    return jsonify({"message": "Professional test deleted successfully"}), 200
 
 # ==============================
-# Feedbacks by Candidate
+# FEEDBACK - GET ALL CANDIDATES
 # ==============================
-@app.route('/feedbacks/<int:candidate_id>', methods=['GET'])
+@app.route('/candidates/for-feedback', methods=['GET'])
 @token_required
-def get_feedbacks(current_user, candidate_id):
-    cur = mysql.connection.cursor()
-    cur.execute("""
-        SELECT 
-            f.id,
-            u.username AS given_by,
-            f.rating,
-            f.comment,
-            f.created_at
-        FROM feedbacks f
-        JOIN users u ON f.given_by = u.id
-        WHERE f.candidate_id = %s
-        ORDER BY f.created_at DESC
-    """, (candidate_id,))
-    rows = cur.fetchall()
-    cur.close()
+def get_candidates_for_feedback(current_user):
+    try:
+        if current_user.get('role') != 'Director':
+            return jsonify({'message': 'Akses ditolak'}), 403
 
-    feedbacks = [{
-        'id': r[0],
-        'given_by': r[1],
-        'rating': float(r[2]) if r[2] is not None else None,
-        'comment': r[3],
-        'created_at': str(r[4])
-    } for r in rows]
+        cur = mysql.connection.cursor()
 
-    return jsonify(feedbacks), 200
+        # Ambil SEMUA candidate dengan field baru
+        cur.execute("""
+            SELECT 
+                c.id AS candidate_id,
+                c.name,
+                c.email,
+                c.no_telp,
+                c.domisili,
+                c.status,
+                c.created_at,
+                CASE 
+                    WHEN f.id IS NOT NULL THEN TRUE 
+                    ELSE FALSE 
+                END AS already_feedback
+            FROM candidates c
+            LEFT JOIN feedbacks f ON c.id = f.candidate_id
+            ORDER BY c.created_at DESC
+        """)
+
+        rows = cur.fetchall()
+        cur.close()
+
+        data = []
+        for r in rows:
+            data.append({
+                "candidate_id": r[0],
+                "name": r[1],
+                "email": r[2],
+                "telepon": r[3],  # dari no_telp
+                "domisili": r[4],
+                "status": r[5],
+                "created_at": r[6].isoformat() if r[6] else None,
+                "already_feedback": bool(r[7])
+            })
+
+        return jsonify({
+            "success": True,
+            "total": len(data),
+            "data": data
+        }), 200
+
+    except Exception as e:
+        print(f"Error in get_candidates_for_feedback: {str(e)}")
+        return jsonify({'message': 'Terjadi kesalahan server'}), 500
+    
+# ============================================
+# CREATE FEEDBACK
+# ============================================
+@app.route('/feedbacks', methods=['POST'])
+@token_required
+def create_feedback(current_user):
+    try:
+        if current_user.get('role') != 'Director':
+            return jsonify({'message': 'Akses ditolak'}), 403
+
+        data = request.get_json()
+        candidate_id = data.get('candidate_id')
+        rating = data.get('rating')
+        comment = data.get('comment', '')
+
+        if not candidate_id or rating is None:
+            return jsonify({'message': 'candidate_id dan rating wajib diisi'}), 400
+
+        try:
+            rating_value = float(rating)
+            if rating_value < 0 or rating_value > 5:
+                return jsonify({'message': 'Rating harus 0.00 - 5.00'}), 400
+        except:
+            return jsonify({'message': 'Rating harus angka'}), 400
+
+        cur = mysql.connection.cursor()
+
+        # Cek kandidat exists
+        cur.execute("SELECT id FROM candidates WHERE id = %s", (candidate_id,))
+        if not cur.fetchone():
+            return jsonify({'message': 'Kandidat tidak ditemukan'}), 404
+
+        # Insert feedback
+        cur.execute("""
+            INSERT INTO feedbacks (candidate_id, given_by, rating, comment, created_at)
+            VALUES (%s, %s, %s, %s, NOW())
+        """, (candidate_id, current_user['user_id'], rating_value, comment))
+
+        mysql.connection.commit()
+        new_id = cur.lastrowid
+        cur.close()
+
+        log_action(current_user['user_id'], f'Feedback, kandidat id : {candidate_id}', 'feedbacks')
+
+        return jsonify({
+            "success": True,
+            "message": "Feedback berhasil ditambahkan",
+            "feedback_id": new_id
+        }), 201
+
+    except Exception as e:
+        mysql.connection.rollback()
+        return jsonify({'message': f'Server error: {str(e)}'}), 500
+
+# ============================================
+# GET ALL FEEDBACKS
+# ============================================
+@app.route('/feedbacks', methods=['GET'])
+@token_required
+def get_all_feedbacks(current_user):
+    try:
+        if current_user.get('role') != 'Director':
+            return jsonify({'message': 'Akses ditolak'}), 403
+
+        cur = mysql.connection.cursor()
+
+        cur.execute("""
+            SELECT 
+                f.id,
+                f.rating,
+                f.comment,
+                f.created_at,
+                c.id AS candidate_id,
+                c.name AS candidate_name,
+                c.email AS candidate_email,
+                c.no_telp AS candidate_telepon,
+                c.domisili AS candidate_domisili,
+                c.status AS candidate_status,
+                u.username AS given_by_name
+            FROM feedbacks f
+            JOIN candidates c ON f.candidate_id = c.id
+            JOIN users u ON f.given_by = u.id
+            ORDER BY f.created_at DESC
+        """)
+
+        rows = cur.fetchall()
+        cur.close()
+
+        data = []
+        for r in rows:
+            data.append({
+                "id": r[0],
+                "rating": float(r[1]) if r[1] is not None else None,
+                "comment": r[2],
+                "created_at": r[3].isoformat() if r[3] else None,
+                "candidate_id": r[4],
+                "candidate_name": r[5],
+                "candidate_email": r[6],
+                "candidate_telepon": r[7],
+                "candidate_domisili": r[8],
+                "candidate_status": r[9],
+                "given_by": r[10]
+            })
+
+        return jsonify({
+            "success": True,
+            "total": len(data),
+            "data": data
+        }), 200
+
+    except Exception as e:
+        print(f"Error in get_all_feedbacks: {str(e)}")
+        return jsonify({'message': 'Terjadi kesalahan server'}), 500
+    
+# ============================================
+# GET DETAIL FEEDBACK BY ID
+# ============================================
+# ============================================
+# GET DETAIL FEEDBACK BY ID
+# ============================================
+@app.route('/feedbacks/<int:feedback_id>', methods=['GET'])
+@token_required
+def get_feedback(current_user, feedback_id):
+    try:
+        if current_user.get('role') != 'Director':
+            return jsonify({'message': 'Akses ditolak'}), 403
+
+        cur = mysql.connection.cursor()
+
+        cur.execute("""
+            SELECT 
+                f.id, 
+                f.rating, 
+                f.comment, 
+                f.created_at,
+                c.id AS candidate_id, 
+                c.name AS candidate_name, 
+                c.email AS candidate_email,
+                c.no_telp AS candidate_telepon,
+                c.domisili AS candidate_domisili,
+                c.status AS candidate_status,
+                u.username AS given_by_name, 
+                u.role AS given_by_role
+            FROM feedbacks f
+            JOIN candidates c ON f.candidate_id = c.id
+            JOIN users u ON f.given_by = u.id
+            WHERE f.id = %s
+        """, (feedback_id,))
+
+        r = cur.fetchone()
+        cur.close()
+
+        if not r:
+            return jsonify({'message': 'Feedback tidak ditemukan'}), 404
+
+        feedback = {
+            "id": r[0],
+            "rating": float(r[1]) if r[1] is not None else None,
+            "comment": r[2],
+            "created_at": r[3].isoformat() if r[3] else None,
+            "candidate": {
+                "id": r[4],
+                "name": r[5],
+                "email": r[6],
+                "telepon": r[7],
+                "domisili": r[8],
+                "status": r[9]
+            },
+            "given_by": {
+                "name": r[10],
+                "role": r[11]
+            }
+        }
+
+        return jsonify({"success": True, "data": feedback}), 200
+
+    except Exception as e:
+        print(f"Error in get_feedback: {str(e)}")
+        return jsonify({'message': 'Terjadi kesalahan server'}), 500
+    
+# ============================================
+# UPDATE FEEDBACK BY ID
+# ============================================
+@app.route('/feedbacks/<int:feedback_id>', methods=['PUT'])
+@token_required
+def update_feedback(current_user, feedback_id):
+    try:
+        if current_user.get('role') != 'Director':
+            return jsonify({'message': 'Akses ditolak'}), 403
+
+        data = request.get_json()
+        rating = data.get('rating')
+        comment = data.get('comment', '')
+
+        if rating is None:
+            return jsonify({'message': 'Rating wajib diisi'}), 400
+
+        try:
+            rating_value = float(rating)
+            if rating_value < 0 or rating_value > 5:
+                return jsonify({'message': 'Rating harus 0.00 - 5.00'}), 400
+        except (ValueError, TypeError):
+            return jsonify({'message': 'Rating harus angka'}), 400
+
+        cur = mysql.connection.cursor()
+
+        try:
+            # Cek apakah feedback exists
+            cur.execute("SELECT id, candidate_id FROM feedbacks WHERE id = %s", (feedback_id,))
+            feedback_data = cur.fetchone()
+            
+            if not feedback_data:
+                return jsonify({'message': 'Feedback tidak ditemukan'}), 404
+
+            candidate_id = feedback_data[1]
+
+            # Update feedback
+            cur.execute("""
+                UPDATE feedbacks 
+                SET rating = %s, comment = %s
+                WHERE id = %s
+            """, (rating_value, comment, feedback_id))
+
+            mysql.connection.commit()
+
+            log_action(current_user['user_id'], f'Edit feedback, kandidat id : {candidate_id}', 'feedbacks')
+            return jsonify({
+                "success": True,
+                "message": "Feedback berhasil diupdate",
+                "feedback_id": feedback_id
+            }), 200
+
+        except Exception as e:
+            mysql.connection.rollback()
+            raise e
+
+    except Exception as e:
+        print(f"Error in update_feedback: {str(e)}")
+        return jsonify({'message': f'Server error: {str(e)}'}), 500
+
+    finally:
+        if 'cur' in locals():
+            cur.close()
+
+# ============================================
+# DELETE FEEDBACK BY ID
+# ============================================
+@app.route('/feedbacks/<int:feedback_id>', methods=['DELETE'])
+@token_required
+def delete_feedback(current_user, feedback_id):
+    try:
+        if current_user.get('role') != 'Director':
+            return jsonify({'message': 'Akses ditolak'}), 403
+
+        cur = mysql.connection.cursor()
+
+        try:
+            # Cek apakah feedback exists
+            cur.execute("SELECT id, candidate_id FROM feedbacks WHERE id = %s", (feedback_id,))
+            feedback_data = cur.fetchone()
+            
+            if not feedback_data:
+                return jsonify({'message': 'Feedback tidak ditemukan'}), 404
+
+            candidate_id = feedback_data[1]
+
+            # Delete feedback
+            cur.execute("DELETE FROM feedbacks WHERE id = %s", (feedback_id,))
+
+            mysql.connection.commit()
+
+            log_action(current_user['user_id'], f'Hapus feedback, kandidat id : {candidate_id}', 'feedbacks')
+            return jsonify({
+                "success": True,
+                "message": "Feedback berhasil dihapus"
+            }), 200
+
+        except Exception as e:
+            mysql.connection.rollback()
+            raise e
+
+    except Exception as e:
+        print(f"Error in delete_feedback: {str(e)}")
+        return jsonify({'message': f'Server error: {str(e)}'}), 500
+
+    finally:
+        if 'cur' in locals():
+            cur.close()
 
 
 # ==============================
@@ -1565,6 +2127,119 @@ def dashboard(current_user):
         'professional_phase': professional_phase,
         'todays_schedule': todays_schedule
     }), 200
+
+# ==============================
+# Profile Management
+# ==============================
+@app.route('/profile', methods=['GET'])
+@token_required
+def get_profile(current_user):
+    """Get profile user yang sedang login"""
+    cur = mysql.connection.cursor()
+    cur.execute("""
+        SELECT id, username, email, telp, role, created_at 
+        FROM users WHERE id=%s
+    """, (current_user['user_id'],))
+    user = cur.fetchone()
+    cur.close()
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    return jsonify({
+        'id': user[0],
+        'username': user[1],
+        'email': user[2],
+        'telp': user[3],
+        'role': user[4],
+        'created_at': str(user[5])
+    })
+
+@app.route('/profile', methods=['PUT'])
+@token_required
+def update_profile(current_user):
+    """Update profile user yang sedang login"""
+    data = request.json or {}
+    username = data.get('username')
+    email = data.get('email')
+    telp = data.get('telp')
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+
+    cur = mysql.connection.cursor()
+    
+    if new_password:
+        if not current_password:
+            return jsonify({'message': 'Current password required to change password'}), 400
+        
+        cur.execute("SELECT password FROM users WHERE id=%s", (current_user['user_id'],))
+        user = cur.fetchone()
+        if not user:
+            return jsonify({'message': 'User not found'}), 404
+
+        stored_hash = user[0]
+        if isinstance(stored_hash, str):
+            stored_hash_bytes = stored_hash.encode('utf-8')
+        else:
+            stored_hash_bytes = stored_hash
+
+        if not bcrypt.checkpw(current_password.encode('utf-8'), stored_hash_bytes):
+            return jsonify({'message': 'Current password is incorrect'}), 400
+        
+        hashed_new_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        cur.execute("""
+            UPDATE users 
+            SET username=%s, email=%s, telp=%s, password=%s 
+            WHERE id=%s
+        """, (username, email, telp, hashed_new_password, current_user['user_id']))
+    else:
+        cur.execute("""
+            UPDATE users 
+            SET username=%s, email=%s, telp=%s 
+            WHERE id=%s
+        """, (username, email, telp, current_user['user_id']))
+
+    mysql.connection.commit()
+    cur.close()
+
+    log_action(current_user['user_id'], 'Edit profil', 'profil')
+    return jsonify({'message': 'Profile updated successfully'})
+
+@app.route('/profile/password', methods=['PUT'])
+@token_required
+def change_password(current_user):
+    """Ganti password khusus"""
+    data = request.json or {}
+    current_password = data.get('current_password')
+    new_password = data.get('new_password')
+
+    if not current_password or not new_password:
+        return jsonify({'message': 'Current password and new password are required'}), 400
+
+    cur = mysql.connection.cursor()
+    
+    cur.execute("SELECT password FROM users WHERE id=%s", (current_user['user_id'],))
+    user = cur.fetchone()
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    stored_hash = user[0]
+    if isinstance(stored_hash, str):
+        stored_hash_bytes = stored_hash.encode('utf-8')
+    else:
+        stored_hash_bytes = stored_hash
+
+    if not bcrypt.checkpw(current_password.encode('utf-8'), stored_hash_bytes):
+        return jsonify({'message': 'Current password is incorrect'}), 400
+    
+    hashed_new_password = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    cur.execute("UPDATE users SET password=%s WHERE id=%s", (hashed_new_password, current_user['user_id']))
+    mysql.connection.commit()
+    cur.close()
+
+    log_action(current_user['user_id'], 'Ganti password', 'users')
+    return jsonify({'message': 'Password changed successfully'})
 
 # ==============================
 # Run
