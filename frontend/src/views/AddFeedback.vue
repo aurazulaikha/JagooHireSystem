@@ -14,9 +14,6 @@
           <div class="info-item">
             <strong>Nama:</strong> {{ candidateName }}
           </div>
-          <div class="info-item">
-            <strong>Posisi:</strong> {{ candidateRole }}
-          </div>
         </div>
       </div>
 

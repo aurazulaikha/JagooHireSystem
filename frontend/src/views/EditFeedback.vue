@@ -27,9 +27,6 @@
             <div class="info-item">
               <strong>Nama:</strong> {{ feedbackData.candidate?.name }}
             </div>
-            <div class="info-item">
-              <strong>Posisi:</strong> {{ feedbackData.candidate?.role }}
-            </div>
           </div>
         </div>
 
